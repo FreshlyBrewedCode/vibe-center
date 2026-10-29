@@ -228,6 +228,27 @@ describe("chat against the fake harness", () => {
     expect(messages.filter((m) => m.kind === "session")).toHaveLength(1);
   });
 
+  test("programmatic prompts (voice) record both sides as voice transcripts", async () => {
+    const updates: string[] = [];
+    const handle = app.services.chat.prompt(agent.id, {
+      text: "hello by voice",
+      source: "voice",
+      display: "voice_transcript",
+      replyKind: "voice_transcript",
+      note: "[voice mode: short spoken replies]",
+      onUpdate: (u) => updates.push(u.sessionUpdate),
+    });
+    const result = await handle.done;
+    expect(result.text).toContain("Echo: [voice mode: short spoken replies]\nhello by voice");
+    expect(updates).toContain("agent_message_chunk");
+    const { messages } = await api<MessagesResponse>(`/api/conversations/${agent.conversationId}/messages`);
+    expect(messages.slice(-2).map((m) => `${m.role}:${m.kind}`)).toEqual([
+      "user:voice_transcript",
+      "agent:voice_transcript",
+    ]);
+    expect(messages.at(-2)?.text).toBe("hello by voice");
+  });
+
   test("search finds finished messages", async () => {
     const hits = await api<{ snippet: string }[]>("/api/search?q=granted");
     expect(hits[0]?.snippet).toContain("<mark>granted</mark>");

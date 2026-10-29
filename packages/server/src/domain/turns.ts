@@ -19,6 +19,8 @@ export interface TurnContext {
   sessionId: string;
   /** Raw ACP updates of this turn, in order (voice worker: sentence splitting, filler cues). */
   onUpdate?: (update: acp.SessionUpdate) => void;
+  /** Message kind for the agent's reply text: `voice_transcript` while in a call. */
+  replyKind?: "text" | "voice_transcript";
 }
 
 /**
@@ -30,7 +32,8 @@ export interface TurnContext {
  * - the turn's plan is one message, replaced on every update
  */
 export class TurnRecorder {
-  private segment: { id: string; kind: "text" | "thought"; length: number } | null = null;
+  private segment: { id: string; kind: "text" | "voice_transcript" | "thought"; length: number } | null =
+    null;
   private tools = new Map<string, string>();
   private plan: string | null = null;
   private permissions = new Map<string, string>();
@@ -53,7 +56,8 @@ export class TurnRecorder {
       case "agent_message_chunk":
       case "agent_thought_chunk": {
         const text = contentText(u.content);
-        if (text) this.appendSegment(u.sessionUpdate === "agent_message_chunk" ? "text" : "thought", text);
+        const kind = u.sessionUpdate === "agent_message_chunk" ? (this.ctx.replyKind ?? "text") : "thought";
+        if (text) this.appendSegment(kind, text);
         return;
       }
       case "tool_call":
@@ -127,7 +131,7 @@ export class TurnRecorder {
 
   // ---- internals ------------------------------------------------------------------------------
 
-  private appendSegment(kind: "text" | "thought", text: string): void {
+  private appendSegment(kind: "text" | "voice_transcript" | "thought", text: string): void {
     const seg = this.segment;
     if (seg && seg.kind === kind) {
       this.repos.messages.appendText(seg.id, text);
@@ -144,7 +148,7 @@ export class TurnRecorder {
     this.closeSegment("complete");
     const m = this.insert({ kind, role: "agent", status: "streaming", text });
     this.segment = { id: m.id, kind, length: text.length };
-    if (kind === "text") {
+    if (kind !== "thought") {
       this.replyIds.push(m.id);
       this.onUnread(this.ctx.conversationId);
     }

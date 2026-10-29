@@ -33,6 +33,8 @@ export interface PromptRequest {
    * not at all (`hidden`, e.g. a warm-up prompt).
    */
   display?: "text" | "voice_transcript" | "hidden";
+  /** Kind of the agent's reply messages; calls record both sides as `voice_transcript`. */
+  replyKind?: "text" | "voice_transcript";
   /** Hidden instructions sent before the text, e.g. the voice-mode note. Not persisted. */
   note?: string;
   /** Overrides the runtime's idle timeout for this turn (voice turns want it short). */
@@ -105,7 +107,14 @@ export class ChatService {
     const recorder = new TurnRecorder(
       this.repos,
       this.bus,
-      { turnId, agentId, conversationId: conversation.id, sessionId: session.id, onUpdate: req.onUpdate },
+      {
+        turnId,
+        agentId,
+        conversationId: conversation.id,
+        sessionId: session.id,
+        onUpdate: req.onUpdate,
+        replyKind: req.replyKind,
+      },
       (id) => this.publishUnread(id),
     );
     this.turns.set(turnId, recorder);
