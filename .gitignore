@@ -38,3 +38,6 @@ prototype/voice-loop/.uv
 .DS_Store
 .idea/
 .vscode/
+
+# nix-provided chromium for Playwright on NixOS (see playwright.config.ts)
+.chromium

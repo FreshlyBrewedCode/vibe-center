@@ -1,0 +1,3 @@
+[test]
+# Unit/integration tests live in packages/*; e2e/ is Playwright's (bun run e2e).
+root = "packages"
