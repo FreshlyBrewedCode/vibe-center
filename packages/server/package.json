@@ -1,0 +1,18 @@
+{
+  "name": "@vibe-center/server",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "vibe-center": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.99.1",
+    "@agentclientprotocol/sdk": "2.1.0",
+    "@vibe-center/shared": "workspace:*",
+    "hono": "4.13.14",
+    "zod": "4.6.7"
+  }
+}
