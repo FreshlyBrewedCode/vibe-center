@@ -1,0 +1,7 @@
+# faster-whisper (ctranslate2 4.x) is built against CUDA 12: own venv, so its
+# cu12 cuBLAS/cuDNN don't collide with the cu13 wheels of torch/onnxruntime
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+soundfile
+soxr

@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.py[oc]
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# runtime data, logs, local state
+data/
+logs/
+*.log
+.vibe-center/
+
+# test output
+test-results/
+playwright-report/
+blob-report/
+coverage/
+
+# spike / prototype run artefacts
+results/
+**/tests/out/
+scratch/
+prototype/voice-loop/assets/cues/
+prototype/voice-loop/.chromium
+prototype/voice-loop/.uv
+
+# secrets and editor noise
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/
