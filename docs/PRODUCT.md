@@ -69,11 +69,11 @@ remote.
   per-session credential) that aggregates the agent's enabled tools from all configured servers
   plus the built-in ones. It enforces per-agent tool selection for any harness, and every tool
   call passes through it, so the UI can show it
-- **Voice pipeline as separate managed processes**: the Python Pipecat voice worker (from
-  `prototype/voice-loop`) does transport, VAD, turn-taking, STT/TTS and latency hiding. It does
-  *not* own the agent: its "LLM step" calls back into the main app, which routes it into the
+- **Voice pipeline as separate managed processes**: the Python Pipecat voice worker
+  (`services/voice`, grown from `prototype/voice-loop`) does transport, VAD, turn-taking,
+  STT/TTS and latency hiding. It does *not* own the agent: its "LLM step" calls back into the main app, which routes it into the
   agent's ACP session and persists the transcript. STT/TTS default to the GPU servers on km-pc
-  (`prototype/gpu-speech`, via `.agents/skills/gpu-ml`). Settings can point the worker and the
+  (`services/speech-gpu`, via `.agents/skills/gpu-ml`). Settings can point the worker and the
   STT/TTS services at URLs, so any of them can run on another machine. While in a call, prompts
   carry a voice-mode note (short spoken replies, no markdown). **No end-of-turn "mm-hmm"**:
   silence instead. Keep the filler cues around silent tool calls; the user liked them

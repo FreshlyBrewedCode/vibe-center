@@ -1,7 +1,7 @@
 # Vibe Center: architecture (v1)
 
-What exists after phase 1 and phase 2a (MCP gateway), how it fits together, and where phases 2b
-(voice) and 2c (UI) plug in. The product spec is [PRODUCT.md](PRODUCT.md); commands and conventions are in
+What exists after phases 1, 2a (MCP gateway), 2b (voice calls) and 2c (UI), how it fits together,
+and the seams between them. The product spec is [PRODUCT.md](PRODUCT.md); commands and conventions are in
 [AGENTS.md](../AGENTS.md).
 
 ## Components
@@ -20,10 +20,11 @@ vibe-center start  (one Bun process, binds 127.0.0.1:7880 only)
   ├─ one harness process per active agent, ACP over stdio
   │    claude-agent-acp (node) │ opencode acp │ custom command
   │      └─ MCP client → http://127.0.0.1:<port>/mcp  (the gateway; one "vibe" server per session)
-  └─ one process/connection per configured upstream MCP server (stdio child or HTTP client)
+  ├─ one process/connection per configured upstream MCP server (stdio child or HTTP client)
+  ├─ voice bridge       /voice/bridge  WS from the worker, per-call Bearer token
+  └─ voice worker       services/voice (Python, Pipecat), managed child process or remote URL
+       ⇅ WebRTC media straight to the browser;  STT/TTS: services/speech-gpu on km-pc or CPU
 ```
-
-Phase 2b adds the Python voice worker as a child process that calls back into the app.
 
 ## Layout
 
@@ -41,11 +42,16 @@ packages/server/src/
   auth/auth.ts            link tokens, device sessions
   http/                   api.ts (core routes), mcp-api.ts, middleware.ts, ws.ts, static.ts, origin.ts
   domain/                 chat.ts, turns.ts, agents.ts, harnesses.ts, presence.ts, errors.ts
+  voice/                  service.ts (calls, health, settings), worker.ts (child process, client),
+                          bridge.ts (the worker's WS → chat.prompt), http.ts (/api/voice), settings.ts
   acp/                    the harness layer (below); knows nothing about storage or HTTP
   mcp/                    the MCP gateway, upstream clients, tool catalog, built-in tools (below)
   db/                     index.ts (open + migrate), migrations/*.sql, repos/*.ts
   events/bus.ts           in-process EventBus
-packages/server/test/     bun tests; fake-agent.ts is a scripted ACP agent
+packages/server/test/     bun tests; fake-agent.ts is a scripted ACP agent, fake-voice-worker.ts
+                          the worker's API and bridge without audio
+services/voice/           the voice worker (Python + uv): README has its API and bridge protocol
+services/speech-gpu/      GPU STT (Parakeet) / TTS (Kokoro) servers for km-pc, speech.sh
 packages/web/src/         Vite SPA (below)
 e2e/                      Playwright
 ```
@@ -83,7 +89,7 @@ e2e/                      Playwright
 | `mcp_tool_calls` | every call the gateway served: agent, session, turn, server, tool, args, result, timing, and the tool_call message it was attached to |
 | `memories` (+ FTS5) | the memory tools' store; `agent_id NULL` = shared |
 | `devices` | device sessions (hashed secret), last seen, revoked |
-| `settings` | key → JSON (voice URLs, appearance, …) |
+| `settings` | key → JSON: `voice` (worker mode/URL/token, STT/TTS URLs, filler), appearance, … |
 
 **Migrations** are `*.sql` files applied in name order and tracked by **name**, so parallel
 branches never fight over a number. Name new ones `<YYYYMMDDHHmm>_<phase>_<what>.sql`. Never
@@ -233,6 +239,8 @@ One socket per tab; every event goes to every device (single user). The client s
 | `mcp.server.upsert` / `mcp.server.deleted` | MCP server config, status or discovered tools changed |
 | `agent.tools.changed` | an agent's tool groups changed (`agentId: null` = all agents) |
 | `memory.upsert` / `memory.deleted` | a memory changed (by an agent's tool or the UI) |
+| `call.upsert` | a call started, changed state (listening/thinking/speaking), reported a turn's latency, or ended |
+| `voice.status` | worker / STT / TTS health or the GPU speech job changed |
 
 Adding events: put them in your phase's file (`events/mcp.ts`, `events/voice.ts`). Clients
 ignore unknown types, so new events never break older tabs. Server code publishes on the
@@ -252,6 +260,61 @@ ignore unknown types, so new events never break older tabs. Server code publishe
   semantic classes (`bg-background`, `text-muted-foreground`, `bg-presence-working`), not raw
   colours. Theme: `lib/theme.ts` (light/dark/system).
 
+## Voice calls (phase 2b)
+
+```
+browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── POST /calls {offer, voice, stt/tts URLs,
+   │            PATCH …/ice, DELETE …  (cookie)          │        filler, bridge URL + per-call token} ──▶ worker
+   │                                                     │◀── WS /voice/bridge (Bearer per-call token) ──┘
+   └──────────── WebRTC audio (UDP, host candidates on the tailnet) ─────────────────────────────▶ worker
+```
+
+- **Worker** (`services/voice`, Python/Pipecat): transport, Silero VAD + Smart Turn v3, STT/TTS,
+  fillers, barge-in, latency log. Its README documents its HTTP API and the bridge protocol.
+  It holds no agent and no conversation state; one call at a time.
+- **Process** (`voice/worker.ts`, `ManagedWorker`): in managed mode the app spawns
+  `services/voice/run.sh` at start (`--no-voice` skips it) in its own process group, on a free
+  loopback port with a random token (`VC_WORKER_*` env), logs to `<data>/logs/voice-worker.log`
+  (last 200 lines in memory for Settings), restarts it with backoff (1 s doubling to 30 s, reset
+  after 60 s up) and stops it with SIGTERM → SIGKILL. In remote mode the app only talks to the
+  configured URL with the configured token. `VoiceService` polls `/health` of the worker, STT and
+  TTS every 5 s and publishes `voice.status` on changes.
+- **Signalling**: the browser never talks to the worker. `POST /api/voice/calls` (device cookie,
+  same origin) creates the call, mints a per-call bridge token (stored hashed), and forwards the
+  offer with the bridge URL (`ws://127.0.0.1:<port>/voice/bridge` for managed; the tailnet URL or
+  the "app URL" setting for remote). The worker dials the bridge before it answers, so a call
+  never runs without its bridge. ICE patches and hang-up are proxied the same way.
+- **Bridge** (`voice/bridge.ts`, `CallBridge`): each `prompt` frame becomes
+  `chat.prompt(agentId, { source: "voice" | "event", display: "voice_transcript" | "text",
+  replyKind: "voice_transcript", note: voiceNote(), idleTimeoutMs: 20 s, onUpdate })`. Updates go
+  back as `text`, `tool` (start/end: sentence break + filler trigger) and `usage`; pending
+  permission messages of the turn as `permission`. `cancel` →
+  `ChatService.cancelTurn(agentId, turnId)` (that turn only, a text turn queued next to it
+  survives). The voice-mode note is a `<voice-call>` block (short spoken replies, no markdown,
+  say a sentence before tools; the cut-off context of a barge-in goes in it too). The socket
+  closing ends the call and cancels its open turns.
+- **Calls** (`voice/service.ts`): `Call` objects in memory (`GET /api/voice/calls`,
+  `call.upsert`), state from the worker's `state` frames, last turn's latency from `latency`
+  frames. Presence override `in_call` with the state as detail. A call that doesn't connect
+  within 30 s is ended. Starting a call warms the agent (`ChatService.warm`: spawn + session),
+  so the first utterance doesn't pay the harness start.
+- **Proactive events**: `services.voice.speakEvent(agentId, text): boolean`. With a connected
+  call to that agent the worker speaks it once nobody talks and the agent is idle (600 ms), as
+  an `event` turn in the same session, and it returns true; otherwise false, and the caller
+  prompts as usual (`chat.prompt(agentId, { source: "event", text })`). Phase 2a's agent replies
+  should go through it.
+- **Settings** (`settings` row `voice`, `voice/settings.ts`): worker mode/URL/token (the token is
+  write-only), app URL for a remote worker, STT/TTS URLs (default the km-pc tunnels
+  `127.0.0.1:8401/8402`; empty = CPU only), filler. Per call, the worker uses a GPU server only if
+  its `/health` answers, and falls back to the CPU per request if it disappears.
+- **GPU speech**: `POST /api/voice/gpu-speech/up|down|status` runs
+  `services/speech-gpu/speech.sh` (only where the `gpu` helper exists) and streams its result
+  into `voice.status`.
+- **Web** (`components/voice/`): `call-client.ts` holds the media (mic, `RTCPeerConnection`,
+  playback; a module store, since it is client state), `call.tsx` the Call button and the call
+  bar (state, timer, mute, hang up, live transcript, reply latency). Settings → Voice
+  (`routes/_app/settings/voice.tsx`) and the voice picker in the agent editor.
+
 ## Extension points
 
 Ownership below is meant to keep parallel worktrees from colliding. "Shared" files are expected
@@ -266,28 +329,13 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 `shared/src/api-mcp.ts`, `shared/src/events/mcp.ts`; web `routes/_app/settings/mcp.tsx`,
 `routes/_app/memories.tsx`, `components/mcp/**`.
 
-### Phase 2b: voice worker
+### Phase 2b: voice calls (done, see "Voice calls" above)
 
-- Move `prototype/voice-loop` to `services/voice/` (Python + uv) and run it as a managed child
-  process of the server (a new `packages/server/src/voice/` module: spawn, health, restart,
-  URL settings in the `settings` table). STT/TTS stay separate services
-  (`services/speech-gpu`, from `prototype/gpu-speech`).
-- The worker's **LLM step calls back into the app**. Add an HTTP (or WS) bridge under
-  `packages/server/src/voice/`, authenticated with a per-process secret from the worker's env,
-  not the device cookie. It calls `chat.prompt(agentId, { source: "voice", display:
-  "voice_transcript", replyKind: "voice_transcript", note: <voice-mode note>, idleTimeoutMs:
-  <short>, onUpdate })` and streams the reply text back. Treat `tool_call` updates as a sentence
-  boundary and the filler cue trigger. `done` resolves with the full reply. Barge-in maps to
-  `chat.cancel(conversationId)` (2–9 ms on Claude in the spike).
-- Presence: `presence.setOverride(agentId, { presence: "in_call", detail })` for the call,
-  `null` after it.
-- Browser signalling for WebRTC goes through the app's origin (cookie-authenticated, behind the
-  same `tailscale serve`). Call UI events go in `events/voice.ts`.
+- For other phases: deliver proactive events into a call with `services.voice.speakEvent`;
+  `services.voice.callFor(agentId)` tells whether the agent is in a call.
 - **Owns:** `services/voice/**`, `services/speech-gpu/**`, `packages/server/src/voice/**`,
-  `shared/src/events/voice.ts`, a new `shared/src/api-voice.ts`, new migrations, web
-  `routes/_app/settings/voice.tsx`, `components/voice/**` (the call button and panel are
-  mounted in the DM header). **Shared:** `server.ts`, `services.ts`, `routes/_app/agents/$agentId/index.tsx`
-  (one line to mount the call button), the `SECTIONS` list.
+  `shared/src/events/voice.ts`, `shared/src/api-voice.ts`, web `routes/_app/settings/voice.tsx`,
+  `components/voice/**`, `e2e/voice-call.spec.ts`, `test/{voice.test.ts,fake-voice-worker.ts}`.
 
 ### Phase 2c: UI build-out
 
@@ -301,9 +349,24 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
   `lib/events.ts` and `lib/api.ts` as the only data layer. **Shared:** if the UI needs new
   API fields, add them in `shared/src/domain.ts`/`api.ts` and in `packages/server/src/http/api.ts`.
 
-## Known gaps
+## Known gaps (phase 2b, voice)
 
-- No voice (2b, not yet built). MCP shipped in 2a. Everything else that was a phase-1 UI gap
+- One call at a time (one worker pipeline); a new call ends the previous one. A call keeps
+  running when you leave the DM, but its bar only shows in that DM.
+- The agent is still the latency floor (see `services/voice/RESULTS.md`). No talker/reasoner
+  split, no speculative prompting yet.
+- Smart Turn sometimes calls a short utterance incomplete ("Sorry, stop. Just say goodbye."),
+  and Pipecat's ~3 s silence fallback ends the turn; a mid-sentence pause sometimes ends it early
+  (the cancelled half is merged into the next prompt's context).
+- A reply cut off by a barge-in is stored in full (the DM shows what the agent wrote, not what
+  you heard).
+- Media needs direct UDP between the browser and the worker host (tailnet host candidates; no
+  STUN/TURN). Not tried from km-mbp in this phase; the e2e runs headless Chromium on dev.
+- Echo: use a headset; with speakers the agent's voice can barge in on itself.
+
+## Known gaps (general)
+
+- MCP shipped in 2a, voice calls in 2b (their gaps are above). Everything else that was a phase-1 UI gap
   shipped in 2c: message pagination UI, code highlighting, ⌘K switcher/search with
   jump-to-message, browser notifications, custom harness CRUD form, a template picker, a
   details panel, mobile layout.

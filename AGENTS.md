@@ -16,23 +16,32 @@ bun run dev            # same with Vite HMR (web on port+1, proxying /api and /w
 bun packages/server/src/cli.ts start --local --data-dir /tmp/vc   # localhost only, scratch data
 bun packages/server/src/cli.ts link [--data-dir …]               # fresh sign-in link
 bun run format         # biome --write
+bun run check:voice    # voice worker: ruff + pytest (services/voice/run.sh check; needs uv or nix)
 ```
 
 - Sign in by opening the printed link (single use, 10 min). On NixOS, Playwright needs a nix
   chromium: `nix build nixpkgs#chromium -o .chromium` (the config picks it up).
 - Data lives in `~/.vibe-center/` (`--data-dir` / `VIBE_CENTER_DATA_DIR`). Tests use temp dirs.
   Never point a test at the real one.
+- `start` also starts the voice worker (`services/voice`, Python; first run syncs its venv);
+  `--no-voice` skips it. `bun run e2e` includes a real voice call (`e2e/voice-call.spec.ts`,
+  ~1 min, CPU speech unless `speech.sh up` ran; `VC_E2E_VOICE=0` skips it,
+  `VC_E2E_VOICE_AGENT=claude` uses Claude Haiku instead of the fake agent). Parallel worktrees:
+  pick another port with `VC_E2E_PORT`.
+- GPU speech on km-pc: `services/speech-gpu/speech.sh up|status|down` (or Settings → Voice).
+  Follow `.agents/skills/gpu-ml`: check `gpu status` for a local user, `speech.sh down`, then
+  `gpu sleep` when done.
 - Leave nothing running: stop servers with Ctrl+C or SIGTERM, which also stops harness
-  processes and the `tailscale serve` entry. Don't use `pkill -f <pattern>` from an agent shell;
+  processes, the voice worker and the `tailscale serve` entry. Don't use `pkill -f <pattern>` from an agent shell;
   it can match the shell itself. Kill by PID.
 
 ## Layout
 
 `packages/shared` (types, zod schemas, events), `packages/server` (CLI, Hono API, WS, domain,
 ACP layer, SQLite), `packages/web` (Vite + React + TanStack Router/Query + shadcn/ui),
-`e2e/` (Playwright). `spikes/` and `prototype/` are reference material from before v1; don't
-build on their code paths, port what you need. `services/` (voice worker, speech servers)
-arrives in phase 2b.
+`e2e/` (Playwright), `services/voice` (the voice worker: Python 3.12, uv, ruff, pytest) and
+`services/speech-gpu` (GPU STT/TTS servers for km-pc). `spikes/` and `prototype/` are reference
+material from before v1; don't build on their code paths, port what you need.
 
 ## Conventions
 
