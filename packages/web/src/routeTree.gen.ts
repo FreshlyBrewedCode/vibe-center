@@ -14,6 +14,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppAgentsNewRouteImport } from './routes/_app/agents/new'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
+import { Route as AppSettingsAppearanceRouteImport } from './routes/_app/settings/appearance'
+import { Route as AppSettingsDevicesRouteImport } from './routes/_app/settings/devices'
+import { Route as AppSettingsHarnessesRouteImport } from './routes/_app/settings/harnesses'
 import { Route as AppAgentsAgentIdIndexRouteImport } from './routes/_app/agents/$agentId/index'
 import { Route as AppAgentsAgentIdEditRouteImport } from './routes/_app/agents/$agentId/edit'
 
@@ -41,6 +45,26 @@ const AppAgentsNewRoute = AppAgentsNewRouteImport.update({
   path: '/agents/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsDevicesRoute = AppSettingsDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsHarnessesRoute = AppSettingsHarnessesRouteImport.update({
+  id: '/harnesses',
+  path: '/harnesses',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppAgentsAgentIdIndexRoute = AppAgentsAgentIdIndexRouteImport.update({
   id: '/agents/$agentId/',
   path: '/agents/$agentId/',
@@ -55,16 +79,23 @@ const AppAgentsAgentIdEditRoute = AppAgentsAgentIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
-  '/settings': typeof AppSettingsRoute
+  '/settings': typeof AppSettingsRouteWithChildren
   '/agents/new': typeof AppAgentsNewRoute
+  '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/devices': typeof AppSettingsDevicesRoute
+  '/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/settings/': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
   '/agents/new': typeof AppAgentsNewRoute
+  '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/devices': typeof AppSettingsDevicesRoute
+  '/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/settings': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId': typeof AppAgentsAgentIdIndexRoute
 }
@@ -72,9 +103,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
-  '/_app/settings': typeof AppSettingsRoute
+  '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/agents/new': typeof AppAgentsNewRoute
+  '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/_app/settings/devices': typeof AppSettingsDevicesRoute
+  '/_app/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/_app/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
 }
@@ -85,14 +120,21 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/agents/new'
+    | '/settings/appearance'
+    | '/settings/devices'
+    | '/settings/harnesses'
+    | '/settings/'
     | '/agents/$agentId/edit'
     | '/agents/$agentId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
-    | '/settings'
     | '/'
     | '/agents/new'
+    | '/settings/appearance'
+    | '/settings/devices'
+    | '/settings/harnesses'
+    | '/settings'
     | '/agents/$agentId/edit'
     | '/agents/$agentId'
   id:
@@ -102,6 +144,10 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/'
     | '/_app/agents/new'
+    | '/_app/settings/appearance'
+    | '/_app/settings/devices'
+    | '/_app/settings/harnesses'
+    | '/_app/settings/'
     | '/_app/agents/$agentId/edit'
     | '/_app/agents/$agentId/'
   fileRoutesById: FileRoutesById
@@ -148,6 +194,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgentsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/appearance': {
+      id: '/_app/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof AppSettingsAppearanceRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/devices': {
+      id: '/_app/settings/devices'
+      path: '/devices'
+      fullPath: '/settings/devices'
+      preLoaderRoute: typeof AppSettingsDevicesRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/harnesses': {
+      id: '/_app/settings/harnesses'
+      path: '/harnesses'
+      fullPath: '/settings/harnesses'
+      preLoaderRoute: typeof AppSettingsHarnessesRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/agents/$agentId/': {
       id: '/_app/agents/$agentId/'
       path: '/agents/$agentId'
@@ -165,8 +239,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppSettingsRouteChildren {
+  AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsDevicesRoute: typeof AppSettingsDevicesRoute
+  AppSettingsHarnessesRoute: typeof AppSettingsHarnessesRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsDevicesRoute: AppSettingsDevicesRoute,
+  AppSettingsHarnessesRoute: AppSettingsHarnessesRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
 interface AppRouteChildren {
-  AppSettingsRoute: typeof AppSettingsRoute
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsNewRoute: typeof AppAgentsNewRoute
   AppAgentsAgentIdEditRoute: typeof AppAgentsAgentIdEditRoute
@@ -174,7 +266,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppSettingsRoute: AppSettingsRoute,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppAgentsNewRoute: AppAgentsNewRoute,
   AppAgentsAgentIdEditRoute: AppAgentsAgentIdEditRoute,

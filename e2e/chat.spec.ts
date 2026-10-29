@@ -92,4 +92,11 @@ test("sign in, create an agent, chat with streaming, stop, permissions, new sess
   await page.reload();
   await expect(page.getByTestId("message-agent").first()).toContainText("SYSTEM=[You are Echo.]");
   await page.screenshot({ path: "test-results/dm.png" });
+
+  // Settings: harness health (the fake one was probed) and this device.
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page).toHaveURL(/\/settings\/harnesses$/);
+  await expect(page.getByTestId(`harness-${harness.id}`).getByTestId("health")).toHaveText("Working");
+  await page.getByRole("link", { name: "Devices" }).click();
+  await expect(page.getByText("(this device)")).toBeVisible();
 });

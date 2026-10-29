@@ -6,7 +6,6 @@ import {
   type ApiError,
   AuthExchangeBody,
   type ConversationResponse,
-  type Device,
   type DevicesResponse,
   HarnessBody,
   type HarnessesResponse,
@@ -22,45 +21,24 @@ import {
   type SendMessageResponse,
 } from "@vibe-center/shared";
 import { Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { z } from "zod";
+import { deleteCookie, setCookie } from "hono/cookie";
 import { SESSION_COOKIE, SESSION_MAX_AGE_S } from "../auth/auth.ts";
 import { HttpError } from "../domain/errors.ts";
 import type { Services } from "../services.ts";
-import { originAllowed } from "./origin.ts";
-
-type Env = { Variables: { device: Device } };
+import { type AuthedEnv, handleError, requireDevice, sameOrigin } from "./middleware.ts";
 
 /**
  * The JSON API under /api. Paths and request schemas come from @vibe-center/shared (`paths`,
  * zod bodies); every route except the token exchange needs a device-session cookie.
- * Phase 2a/2b mount their own routers with `api.route(...)` in server.ts rather than editing
- * this file.
+ * Phases 2a/2b add their own routers (own files, reusing middleware.ts) and mount them in
+ * server.ts rather than growing this file.
  */
-export function createApi(s: Services): Hono<Env> {
-  const api = new Hono<Env>();
+export function createApi(s: Services): Hono<AuthedEnv> {
+  const api = new Hono<AuthedEnv>();
 
-  api.onError((err, c) => {
-    if (err instanceof HttpError) {
-      return c.json<ApiError>({ error: err.message, ...(err.hint ? { hint: err.hint } : {}) }, err.status);
-    }
-    if (err instanceof z.ZodError) {
-      const issue = err.issues[0];
-      const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";
-      return c.json<ApiError>({ error: `${where}${issue?.message ?? "invalid request"}` }, 400);
-    }
-    console.error("API error", err);
-    return c.json<ApiError>({ error: "internal error" }, 500);
-  });
+  api.onError(handleError);
   api.notFound((c) => c.json<ApiError>({ error: "not found" }, 404));
-
-  // CSRF: the cookie is SameSite=Strict, and state-changing requests must come from our origin.
-  api.use(async (c, next) => {
-    if (c.req.method !== "GET" && !originAllowed(c.req.raw)) {
-      throw new HttpError(403, "cross-origin request refused");
-    }
-    await next();
-  });
+  api.use(sameOrigin);
 
   // ---- auth (public) ---------------------------------------------------------------------------
 
@@ -83,12 +61,7 @@ export function createApi(s: Services): Hono<Env> {
 
   // ---- everything else needs a device session ---------------------------------------------------
 
-  api.use(async (c, next) => {
-    const device = s.auth.authenticate(getCookie(c, SESSION_COOKIE));
-    if (!device) throw new HttpError(401, "not signed in");
-    c.set("device", device);
-    await next();
-  });
+  api.use(requireDevice(s));
 
   api.get("/auth/me", (c) => c.json<MeResponse>({ device: c.get("device") }));
   api.post("/auth/logout", (c) => {
