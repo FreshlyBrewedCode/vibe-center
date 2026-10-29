@@ -49,6 +49,11 @@ pcm24 = array.array("h", bytes(pcm[: len(pcm) // 2 * 2]))
 dur = len(pcm24) / sr
 print(f"TTS  {len(a.text.split())} words, voice {a.voice}: first audio {ttfa*1000:.0f} ms, "
       f"{dur:.2f}s audio in {tts_total*1000:.0f} ms ({n_chunks} reads), RTF {tts_total/dur:.3f}")
+# the server trims each sentence's padding (~30 ms lead, ~120 ms tail); untrimmed it was ~350/500
+first = next((i for i, v in enumerate(pcm24) if abs(v) > 330), len(pcm24))
+last = next((i for i in range(len(pcm24) - 1, -1, -1) if abs(pcm24[i]) > 330), 0)
+lead_ms, tail_ms = first / sr * 1000, (len(pcm24) - 1 - last) / sr * 1000
+print(f"TTS  silence: {lead_ms:.0f} ms before the first sound, {tail_ms:.0f} ms after the last")
 
 if a.save:
     with wave.open(a.save, "wb") as w:
@@ -89,5 +94,8 @@ words = lambda s: re.sub(r"[^a-z0-9 ]", " ", s.lower()).split()
 ref, hyp = words(a.text), words(text)
 missing = [w for w in ref if w not in hyp]
 ok = len(missing) <= max(1, len(ref) // 10)
-print("PASS" if ok else f"FAIL: missing words {missing}")
+padded = lead_ms > 100 or tail_ms > 250
+print("PASS" if ok and not padded else
+      f"FAIL: missing words {missing}" if not ok else f"FAIL: untrimmed silence ({lead_ms:.0f}/{tail_ms:.0f} ms)")
+ok = ok and not padded
 sys.exit(0 if ok else 1)

@@ -37,7 +37,7 @@ gpu ssh 'mkdir -p ~/vibe-center && cd ~/vibe-center && nix shell nixpkgs#python3
 
 Verified 2026-10-29: `torch 2.15.0+cu132` sees the RTX 3070 (~21 TFLOPS fp16 matmul). For
 anything beyond a one-liner, run through a wrapper script kept in the repo, like
-[`prototype/gpu-speech/env.sh`](../../../prototype/gpu-speech/env.sh) (`./env.sh setup`, then
+[`services/speech-gpu/env.sh`](../../../services/speech-gpu/env.sh) (`./env.sh setup`, then
 `./env.sh python …`). It sets all of the following.
 
 - the cu13 wheels unpack to `.venv/lib/python3.12/site-packages/nvidia/cu13/lib` (one directory
@@ -76,7 +76,7 @@ units would stop with the last SSH session (inferred, not tried). logind keeps p
 start the server detached in its own session and keep a pid file:
 `setsid bash -c 'echo $$ > run/x.pid; exec ./env.sh python server.py' >> logs/x.log 2>&1 < /dev/null &`.
 `nix shell -c` and `exec` keep the pid, and `kill -- -<pid>` stops the whole group.
-[`prototype/gpu-speech/`](../../../prototype/gpu-speech/) does this (`run.sh`), driven from dev by
+[`services/speech-gpu/`](../../../services/speech-gpu/) does this (`run.sh`), driven from dev by
 `speech.sh up|status|down`, with its own ControlMaster tunnel. Its STT/TTS servers (ports
 8401/8402, ~2.8 GB VRAM) are the ready-made speech stack: see its README.
 

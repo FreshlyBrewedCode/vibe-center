@@ -1,5 +1,6 @@
 """TTS server: Kokoro-82M (official `kokoro` package, torch CUDA) behind an OpenAI-compatible
-POST /v1/audio/speech that streams raw s16le mono 24 kHz PCM, one chunk per sentence. English only."""
+POST /v1/audio/speech that streams raw s16le mono 24 kHz PCM, one chunk per sentence, each trimmed
+to ~30 ms of silence in front and ~120 ms behind. English only."""
 import logging, os, re, struct, threading, time
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,12 @@ gpu = threading.Lock()  # one synthesis step at a time on the GPU
 SENTENCE = re.compile(r"(?<=[.!?…])[\"')\]]*\s+|\n+")
 CLAUSE = re.compile(r"(?<=[,;:—])\s+")
 FIRST_CHUNK_MAX_WORDS = 12
+# Kokoro pads every chunk with ~350 ms of silence in front and ~500 ms behind. Untrimmed, that is
+# heard as extra latency before each reply and slow gaps between sentences, so each chunk is cut
+# to LEAD_S before its first sound and TAIL_S after its last (TTS_TRIM=0 turns it off).
+SILENCE = 0.01  # |sample| below this is silence (about -40 dBFS)
+LEAD_S, TAIL_S = 0.03, 0.12
+TRIM = os.environ.get("TTS_TRIM", "1") != "0"
 
 
 def chunks(text):
@@ -54,6 +61,14 @@ def load():
     log.info("loaded Kokoro-82M with %d voices in %.1fs", len(voices), time.perf_counter() - t)
 
 
+def trim(a):
+    """Cut a chunk's leading and trailing silence to LEAD_S / TAIL_S."""
+    loud = np.flatnonzero(np.abs(a) > SILENCE)
+    if not len(loud):
+        return a[:0]
+    return a[max(0, loud[0] - int(LEAD_S * SR)): loud[-1] + int(TAIL_S * SR) + 1]
+
+
 def synth(text, voice, speed):
     """Yields float32 audio per chunk of text."""
     pipe = state["pipes"][voice[0]]
@@ -61,7 +76,10 @@ def synth(text, voice, speed):
         with gpu:  # not held while the caller sends the chunk
             audio = [r.audio.cpu().numpy() for r in pipe(part, voice=voice, speed=speed, split_pattern=None)
                      if r.audio is not None]
-        yield from audio
+        for a in audio:
+            a = trim(a) if TRIM else a
+            if len(a):
+                yield a
 
 
 def to_s16(a):

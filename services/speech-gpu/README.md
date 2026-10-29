@@ -1,6 +1,7 @@
-# gpu-speech: local STT + TTS on km-pc
+# speech-gpu: local STT + TTS on km-pc
 
-Speech-to-text and text-to-speech servers for the voice "manager agent" prototype. They run on
+Speech-to-text and text-to-speech servers for Vibe Center's voice calls (the default STT/TTS
+URLs of the voice worker, `services/voice`). They run on
 km-pc's RTX 3070, and `dev` reaches them through SSH local forwards on the same ports. English only.
 
 | | port | endpoint | model |
@@ -15,14 +16,18 @@ after ~80 ms (both ~60–90 ms from dev). Together they use ~2.8 GB of VRAM.
 ## Use it from dev
 
 ```sh
-prototype/gpu-speech/speech.sh up        # wake km-pc, sync, start, open tunnels (~20 s awake, ~40 s from sleep; first run on a fresh km-pc: minutes)
-prototype/gpu-speech/smoke.py            # TTS -> STT round trip through the tunnels; prints timings, PASS/FAIL
-prototype/gpu-speech/speech.sh status    # servers (pid, VRAM), tunnel, /health of both ports
-prototype/gpu-speech/speech.sh logs tts  # tail a server's log (stt|tts) [lines]
-prototype/gpu-speech/speech.sh restart   # after changing server code
-prototype/gpu-speech/speech.sh down      # stop servers, close tunnels
+services/speech-gpu/speech.sh up        # wake km-pc, sync, start, open tunnels (~20 s awake, ~40 s from sleep; first run on a fresh km-pc: minutes)
+services/speech-gpu/smoke.py            # TTS -> STT round trip through the tunnels; prints timings, PASS/FAIL
+services/speech-gpu/speech.sh status    # servers (pid, VRAM), tunnel, /health of both ports
+services/speech-gpu/speech.sh logs tts  # tail a server's log (stt|tts) [lines]
+services/speech-gpu/speech.sh restart   # after changing server code
+services/speech-gpu/speech.sh down      # stop servers, close tunnels
 gpu sleep                                # when nothing else needs km-pc
 ```
+
+The app can run `up`, `status` and `down` too: Settings → Voice → "Start GPU speech" (it shows
+the script's output; `gpu sleep` stays manual). Calls pick the GPU servers when their `/health`
+answers at call start, else the worker's CPU models.
 
 - `up` is idempotent: servers that already run are left alone, and an open tunnel is reused. It
   reinstalls the venv only when `requirements.txt` or `env.sh` changed
@@ -55,7 +60,8 @@ curl -s localhost:8401/v1/audio/transcriptions -F file=@utt.wav    # {"text":"Op
 - `input` (required), `voice` (default `af_heart`), `speed` 0.5–2.0 (default 1.0), `model` ignored
 - `response_format`: `pcm` (default): raw **s16le mono 24000 Hz**, chunked; `wav`: the same
   with a streaming WAV header in front (sizes set to 0xFFFFFFFF)
-- streamed one chunk per sentence: the text is split at `.!?…` and line breaks, and a first
+- streamed one chunk per sentence, each trimmed to ~30 ms of silence before and ~120 ms after
+  (Kokoro pads ~350 / ~500 ms; `TTS_TRIM=0` keeps it): the text is split at `.!?…` and line breaks, and a first
   sentence over 12 words also at its first comma/semicolon/colon/dash, so the first audio
   comes after ~80 ms whatever the length. Headers `X-Sample-Rate: 24000`, `X-Audio-Format: s16le-mono`
 - closing the connection mid-stream (barge-in) stops synthesis after the current sentence
@@ -69,7 +75,8 @@ then the port refuses connections. STT also has `GET /v1/models`.
 
 ## How it runs on km-pc
 
-- code in `~/vibe-center/gpu-speech` (synced by `up`), venv `.venv` there, models in
+- code in `~/vibe-center/gpu-speech` (synced by `up`; the remote name predates the move to
+  `services/speech-gpu` and is kept so the venv and models there are reused), venv `.venv` there, models in
   `~/.cache/gpu-speech/` (Parakeet) and `~/.cache/huggingface` (Kokoro)
 - `env.sh` runs a command with Python 3.12 + uv from `nix shell` and `LD_LIBRARY_PATH` set to
   libstdc++/zlib, the cu13 CUDA wheels in the venv and the driver's libcuda (see the `gpu-ml`
