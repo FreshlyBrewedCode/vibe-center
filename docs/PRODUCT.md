@@ -55,11 +55,14 @@ remote.
 ## Key technical decisions
 
 - **ACP for every harness**, via `@agentclientprotocol/sdk`. `spikes/acp-latency/` (FINDINGS.md,
-  configs.ts) shows what works: Claude Code takes the system prompt, model and options through
-  `_meta.claudeCode.options` (append the persona to the default prompt, `ENABLE_TOOL_SEARCH=false`,
-  pre-allow the app's MCP tools); OpenCode through a custom agent config. Hide these per-harness
-  differences behind one adapter per preset. Models and other options come from the session's
-  ACP config options / models: probe them, cache them, and offer them as dropdowns
+  configs.ts) shows what works: Claude Code takes the persona through the ACP `systemPrompt`
+  field (append mode, which claude-agent-acp advertises) and SDK options through
+  `_meta.claudeCode.options` (`ENABLE_TOOL_SEARCH=false`, pre-allowed app MCP tools); OpenCode has
+  no system-prompt capability and takes the persona as an `instructions` file passed in
+  `OPENCODE_CONFIG_CONTENT`. The model and other options are ACP session config options for both
+  (`session/set_config_option`). Hide these per-harness differences behind one adapter per preset.
+  Models and other options come from the session's ACP config options: probe them, cache them,
+  and offer them as dropdowns
 - **One MCP gateway** owned by the app: each ACP session gets a single app MCP endpoint (with a
   per-session credential) that aggregates the agent's enabled tools from all configured servers
   plus the built-in ones. It enforces per-agent tool selection for any harness, and every tool
