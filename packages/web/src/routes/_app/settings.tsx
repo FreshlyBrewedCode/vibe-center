@@ -5,6 +5,7 @@ import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
  * adds its own section file and one line in SECTIONS, so parallel work doesn't collide.
  */
 const SECTIONS = [
+  { to: "/settings/general", label: "General" },
   { to: "/settings/harnesses", label: "Harnesses" },
   { to: "/settings/mcp", label: "MCP servers" },
   { to: "/settings/devices", label: "Devices" },

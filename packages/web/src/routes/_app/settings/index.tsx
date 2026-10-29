@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_app/settings/")({
   beforeLoad: () => {
-    throw redirect({ to: "/settings/harnesses", replace: true });
+    throw redirect({ to: "/settings/general", replace: true });
   },
 });
