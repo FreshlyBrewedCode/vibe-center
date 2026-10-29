@@ -1,9 +1,9 @@
 """Summarize latency logs: per-stage median/p90 and a per-turn table.
 
-    uv run python -m voice_loop.analyze [logs/call-*.jsonl ...] [--browser tests/out/.../browser.json] [--md]
+    ./run.sh python -m voice_worker.analyze [<data>/voice/calls/call-*.jsonl ...] [--browser tests/out/.../browser.json] [--md]
 
 All stage times are ms after the user stopped speaking (`speech_end` = VAD stop - stop_secs).
-The key number is `first agent audio out`: the first non-ack, non-filler TTS audio frame leaving
+The key number is `first agent audio out`: the first non-filler TTS audio frame leaving
 the output transport. With --browser (e2e runs, same clock), the page's own mic/speaker onsets
 give the true mouth-to-ear numbers including WebRTC transport and jitter buffer.
 """
@@ -13,13 +13,15 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import statistics
 from pathlib import Path
+
+from .config import CONFIG
 
 STAGES = [
     ("vad_stop", "VAD stop fired"),
     ("eot_decision", "end-of-turn decision"),
-    ("ack_out", "ack audio out"),
     ("stt_result", "STT result"),
     ("prompt_sent", "prompt sent"),
     ("first_update", "first ACP update"),
@@ -73,10 +75,6 @@ def browser_join(recs: list[dict], browser: dict) -> None:
             continue
         mouth = max(ends)
         r["browser"] = b = {"mic_end": mouth}
-        if "ack_out" in t:
-            ons = [x["on"] for x in bot if x["on"] >= t["ack_out"] - 50]
-            if ons:
-                b["ack_heard"] = min(ons) - mouth
         if "first_audio_out" in t:
             ons = [x["on"] for x in bot if x["on"] >= t["first_audio_out"] - 50]
             if ons:
@@ -97,11 +95,12 @@ def fmt(v) -> str:
 
 def summarize(recs: list[dict], md: bool = False) -> str:
     out = []
-    sep = " | "
     user = [r for r in recs if r["kind"] == "user" and "speech_end" in r["t"]]
     meta = recs[0].get("meta", {}) if recs else {}
-    out.append(f"backend={meta.get('backend')} stt={meta.get('stt')} tts={meta.get('tts')} "
-               f"talker={meta.get('talker_model')} ack={meta.get('ack')} turns={len(recs)} (user turns with VAD stop: {len(user)})")
+    out.append(
+        f"backend={meta.get('backend')} stt={meta.get('stt')} tts={meta.get('tts')} "
+        f"agent={meta.get('agent')} filler={meta.get('filler')} turns={len(recs)} (user turns with VAD stop: {len(user)})"
+    )
     out.append("")
     head = ["stage (ms after user stopped speaking)", "n", "median", "p90", "min", "max"]
     rows = []
@@ -115,27 +114,82 @@ def summarize(recs: list[dict], md: bool = False) -> str:
             rows.append([label, len(xs), statistics.median(xs), pct(xs, 0.9), min(xs), max(xs)])
     tool_spans = [tl["end"] - tl["start"] for r in recs for tl in r.get("tools", []) if "end" in tl]
     if tool_spans:
-        rows.append(["tool call (start→end, ACP)", len(tool_spans), statistics.median(tool_spans), pct(tool_spans, 0.9), min(tool_spans), max(tool_spans)])
-    for key, label in (("ack_heard", "browser: mouth→ack heard"), ("agent_heard", "browser: MOUTH→AGENT HEARD"), ("wire_to_ear", "browser: frame out→heard")):
+        rows.append(
+            [
+                "tool call (start→end, ACP)",
+                len(tool_spans),
+                statistics.median(tool_spans),
+                pct(tool_spans, 0.9),
+                min(tool_spans),
+                max(tool_spans),
+            ]
+        )
+    for key, label in (
+        ("agent_heard", "browser: MOUTH→AGENT HEARD"),
+        ("wire_to_ear", "browser: frame out→heard"),
+    ):
         xs = [r["browser"][key] for r in user if key in r.get("browser", {})]
         if xs:
             rows.append([label, len(xs), statistics.median(xs), pct(xs, 0.9), min(xs), max(xs)])
-    out.append(_table(head, [[c if isinstance(c, (str, int)) else f"{c:.0f}" for c in row] for row in rows], md))
+    out.append(
+        _table(head, [[c if isinstance(c, (str, int)) else f"{c:.0f}" for c in row] for row in rows], md)
+    )
     out.append("")
-    head = ["#", "kind", "eot", "ack", "stt", "prompt", "1st chunk", "filler", "1st tts", "AGENT OUT", "heard", "tools", "barge-in", "user said", "reply"]
+    head = [
+        "#",
+        "kind",
+        "eot",
+        "stt",
+        "prompt",
+        "1st chunk",
+        "filler",
+        "1st tts",
+        "AGENT OUT",
+        "heard",
+        "tools",
+        "barge-in",
+        "user said",
+        "reply",
+    ]
     rows = []
     for r in recs:
-        tools = ",".join(tl["title"].replace("mcp__voice__", "") + ("" if tl.get("spoken_before") else "(silent)") for tl in r.get("tools", []))
+        tools = ",".join(
+            tl["title"] + ("" if tl.get("spoken_before") else "(silent)") for tl in r.get("tools", [])
+        )
         said = r.get("user_text") or ("[event] " + r.get("event_text", "") if r["kind"] == "event" else "")
         bi = r.get("barge_in_while", "")
         if r["kind"] == "event":
-            p0 = r["t"].get("prompt_sent")
-            ev = lambda k: fmt(r["t"][k] - p0) if p0 and k in r["t"] else ""  # noqa: E731
-            cells = ["", "", "", "+0", ev("first_chunk"), ev("filler_out"), ev("tts_request"), ev("first_audio_out"), ""]
+            t, p0 = r["t"], r["t"].get("prompt_sent")
+            ev = [
+                fmt(t[k] - p0) if p0 and k in t else ""
+                for k in ("first_chunk", "filler_out", "tts_request", "first_audio_out")
+            ]
+            cells = ["", "", "+0", *ev, ""]
         else:
-            cells = [fmt(rel(r, k)) for k in ("eot_decision", "ack_out", "stt_result", "prompt_sent", "first_chunk", "filler_out", "tts_request", "first_audio_out")]
+            cells = [
+                fmt(rel(r, k))
+                for k in (
+                    "eot_decision",
+                    "stt_result",
+                    "prompt_sent",
+                    "first_chunk",
+                    "filler_out",
+                    "tts_request",
+                    "first_audio_out",
+                )
+            ]
             cells.append(fmt(r.get("browser", {}).get("agent_heard")))
-        rows.append([str(r["turn"]), r["kind"], *cells, tools, bi, said[:48], (r.get("reply_text") or "")[:60] + (" ✂" if r.get("cancelled") else "")])
+        rows.append(
+            [
+                str(r["turn"]),
+                r["kind"],
+                *cells,
+                tools,
+                bi,
+                said[:48],
+                (r.get("reply_text") or "")[:60] + (" ✂" if r.get("cancelled") else ""),
+            ]
+        )
     out.append(_table(head, rows, md))
     return "\n".join(out)
 
@@ -148,7 +202,15 @@ def _table(head: list[str], rows: list[list[str]], md: bool) -> str:
         return "\n".join(lines)
     w = [max(len(h), *(len(r[i]) for r in rows)) if rows else len(h) for i, h in enumerate(head)]
     lines = ["  ".join(h.ljust(w[i]) for i, h in enumerate(head))]
-    lines += ["  ".join(c.ljust(w[i]) if i in (0, len(head) - 1) or not c.replace('.', '').replace('-', '').isdigit() else c.rjust(w[i]) for i, c in enumerate(r)) for r in rows]
+    lines += [
+        "  ".join(
+            c.ljust(w[i])
+            if i in (0, len(head) - 1) or not c.replace(".", "").replace("-", "").isdigit()
+            else c.rjust(w[i])
+            for i, c in enumerate(r)
+        )
+        for r in rows
+    ]
     return "\n".join(lines)
 
 
@@ -156,7 +218,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("logs", nargs="*")
     ap.add_argument("--browser")
-    ap.add_argument("--run", action="append", default=[], help="e2e run dir (call-*.jsonl + browser.json); repeatable, pooled")
+    ap.add_argument(
+        "--run",
+        action="append",
+        default=[],
+        help="e2e run dir (call-*.jsonl + browser.json); repeatable, pooled",
+    )
     ap.add_argument("--md", action="store_true")
     a = ap.parse_args()
     recs = []
@@ -166,7 +233,7 @@ def main():
             browser_join(run, json.loads(Path(d, "browser.json").read_text()))
         recs += run
     if a.logs or not a.run:
-        paths = a.logs or sorted(glob.glob(str(Path(__file__).resolve().parent.parent / "logs" / "call-*.jsonl")))[-1:]
+        paths = a.logs or sorted(glob.glob(str(CONFIG.log_dir / "call-*.jsonl")), key=os.path.getmtime)[-1:]
         more = load(paths)
         if a.browser:
             browser_join(more, json.loads(Path(a.browser).read_text()))

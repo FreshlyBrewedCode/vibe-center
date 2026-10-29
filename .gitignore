@@ -25,9 +25,8 @@ coverage/
 results/
 **/tests/out/
 scratch/
-prototype/voice-loop/assets/cues/
-prototype/voice-loop/.chromium
-prototype/voice-loop/.uv
+services/voice/.uv
+services/speech-gpu/.uv
 
 # secrets and editor noise
 .env
