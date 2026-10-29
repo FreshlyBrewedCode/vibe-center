@@ -221,6 +221,19 @@ describe("AgentRuntime against the fake ACP agent", () => {
     expect((await rt.prompt(textPrompt("d", "after")).done).status).toBe("complete");
   });
 
+  test("warm spawns the harness and opens the session before the first prompt", async () => {
+    const { rt, events } = makeRuntime();
+    await rt.warm();
+    expect(rt.pid).toBeGreaterThan(0);
+    expect(events.filter((e) => e.type === "session.ready")).toHaveLength(1);
+    const pid = rt.pid;
+    // a prompt racing a second warm-up still uses the one session
+    const [, r] = await Promise.all([rt.warm(), rt.prompt(textPrompt("w1", "history")).done]);
+    expect(r.status).toBe("complete");
+    expect(rt.pid).toBe(pid);
+    expect(events.filter((e) => e.type === "session.ready")).toHaveLength(1);
+  });
+
   test("newSession starts a fresh ACP session", async () => {
     const { rt, events, text } = makeRuntime();
     await rt.prompt(textPrompt("t1", "one")).done;

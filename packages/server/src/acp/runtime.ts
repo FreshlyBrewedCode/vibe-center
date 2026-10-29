@@ -141,6 +141,7 @@ export class AgentRuntime {
     detail: null,
   };
   private disposed = false;
+  private warming: Promise<void> | null = null;
 
   constructor(private readonly opts: RuntimeOptions) {
     this.cfg = { agent: opts.agent, options: opts.options, harness: opts.harness, adapter: opts.adapter };
@@ -184,6 +185,27 @@ export class AgentRuntime {
     for (const q of this.queue.splice(0)) this.endQueued(q, "cancelled before it started");
     if (this.current) this.cancelTurn(this.current, "user");
     await this.draining;
+  }
+
+  /**
+   * Spawn the harness and set up (or resume) the session ahead of the first prompt, so it doesn't
+   * pay for them (a call starting warms its agent). Only when idle; errors surface on the next
+   * prompt instead.
+   */
+  warm(): Promise<void> {
+    if (this.warming) return this.warming;
+    if (this.disposed || this.busy || (this.proc?.alive && this.acpSessionId)) return Promise.resolve();
+    this.warming = (async () => {
+      try {
+        await this.relaunchIfPending();
+        await this.ensureSession(await this.ensureProcess());
+      } catch {
+        // reported by the next prompt
+      } finally {
+        this.warming = null;
+      }
+    })();
+    return this.warming;
   }
 
   /**
@@ -310,6 +332,7 @@ export class AgentRuntime {
 
     let result: TurnResult;
     try {
+      await this.warming; // never two session setups at once
       await this.relaunchIfPending();
       const proc = await Promise.race([this.ensureProcess(), abandoned]);
       const sessionId = await Promise.race([this.ensureSession(proc), abandoned]);

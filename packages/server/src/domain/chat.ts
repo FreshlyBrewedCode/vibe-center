@@ -148,6 +148,11 @@ export class ChatService {
     await this.runtimes.get(conv.agentId)?.cancel();
   }
 
+  /** Start the agent's harness and session now, ahead of its first prompt (calls do this). */
+  warm(agentId: string): Promise<void> {
+    return this.runtime(this.requireAgent(agentId)).warm();
+  }
+
   /** Cancel one turn (running or queued) of an agent without touching its other turns. */
   cancelTurn(agentId: string, turnId: string): void {
     this.runtimes.get(agentId)?.cancelPrompt(turnId);

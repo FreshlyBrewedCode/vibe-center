@@ -214,8 +214,9 @@ test("call an agent: transcripts in the DM, tool filler, barge-in, proactive eve
   expect(said.join(" ").toLowerCase()).toContain("weather");
   expect(replies.filter((m) => m.status === "complete").length).toBeGreaterThanOrEqual(3);
   expect(messages.some((m) => m.kind === "tool_call")).toBe(true);
-  // barge-in: the slow story was cut off by the next utterance and its turn cancelled
-  expect(replies.some((m: Message) => m.status === "cancelled")).toBe(true);
+  // barge-in: the fake agent's slow story is still streaming when the next utterance starts, so
+  // its turn is cancelled (a real agent has usually finished writing: then only the audio stops)
+  if (!realAgent) expect(replies.some((m: Message) => m.status === "cancelled")).toBe(true);
   // the proactive event was prompted (and answered by voice)
   const event = messages.find((m) => m.kind === "text" && m.data?.source === "event");
   expect(event?.text).toBe(ev.text);
@@ -252,14 +253,17 @@ test("call an agent: transcripts in the DM, tool filler, barge-in, proactive eve
       encoding: "utf8",
     },
   );
-  writeFileSync(join(OUT, "latency.txt"), report);
-  writeFileSync(join(OUT, "call.jsonl"), readFileSync(log));
+  const tag = `${realAgent ? "claude" : "fake"}-${status.stt.state === "ok" ? "gpu" : "cpu"}`;
+  writeFileSync(join(OUT, `latency-${tag}.txt`), report);
+  writeFileSync(join(OUT, `call-${tag}.jsonl`), readFileSync(log));
+  writeFileSync(join(OUT, `browser-${tag}.json`), JSON.stringify({ audio: browserAudio }));
   console.log(report);
-  // the agent's first audio left the worker for most user turns
+  // the agent's first audio left the worker for most user turns; the user talked over it once
   const turns = readFileSync(log, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as { kind: string; t: Record<string, number> });
+    .map((l) => JSON.parse(l) as { kind: string; t: Record<string, number>; barge_in_while?: string });
   expect(turns.filter((r) => r.kind === "user" && r.t.first_audio_out).length).toBeGreaterThanOrEqual(3);
+  expect(turns.some((r) => r.barge_in_while)).toBe(true);
   await context.close();
 });

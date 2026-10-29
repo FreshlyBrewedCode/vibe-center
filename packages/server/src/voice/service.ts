@@ -337,6 +337,8 @@ export class VoiceService {
     this.calls.set(id, { call, tokenHash: hashToken(token), bridge, connectTimer });
     this.deps.presence.setOverride(agent.id, { presence: "in_call", detail: "connecting" });
     this.publishCall(call);
+    // spawn the harness and open its session while the media connects, not on the first words
+    void this.deps.chat.warm(agent.id).catch(() => {});
 
     try {
       // The worker dials the bridge during this request, before it answers.
