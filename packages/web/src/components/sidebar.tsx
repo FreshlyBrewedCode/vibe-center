@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Plus, Settings } from "lucide-react";
+import { Brain, Plus, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConnectionState } from "@/lib/events";
 import { useAgents } from "@/lib/queries";
@@ -58,6 +58,14 @@ export function Sidebar() {
         ))}
       </ul>
       <div className="border-t p-2">
+        <Link
+          to="/memories"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
+          activeProps={{ className: "bg-sidebar-accent" }}
+        >
+          <Brain className="size-4" />
+          <span className="max-md:hidden">Memories</span>
+        </Link>
         <Link
           to="/settings"
           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"

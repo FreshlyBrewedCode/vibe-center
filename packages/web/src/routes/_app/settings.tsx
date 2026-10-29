@@ -6,6 +6,7 @@ import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
  */
 const SECTIONS = [
   { to: "/settings/harnesses", label: "Harnesses" },
+  { to: "/settings/mcp", label: "MCP servers" },
   { to: "/settings/devices", label: "Devices" },
   { to: "/settings/appearance", label: "Appearance" },
 ] as const;

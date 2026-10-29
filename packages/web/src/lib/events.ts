@@ -7,6 +7,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type {
   AgentsResponse,
   HarnessesResponse,
+  McpServersResponse,
   Message,
   MessagesResponse,
   ServerEvent,
@@ -160,6 +161,28 @@ export function applyEvent(qc: QueryClient, e: ServerEvent, myDeviceId: string):
             : [...list, e.harness]
           : list,
       );
+      return;
+    case "mcp.server.upsert":
+      qc.setQueryData<McpServersResponse>(keys.mcpServers, (list) =>
+        list
+          ? list.some((s) => s.id === e.server.id)
+            ? list.map((s) => (s.id === e.server.id ? e.server : s))
+            : [...list, e.server]
+          : list,
+      );
+      // Status and discovered tools show in the agents' tool groups too.
+      void qc.invalidateQueries({ queryKey: ["agent-tools"] });
+      return;
+    case "mcp.server.deleted":
+      qc.setQueryData<McpServersResponse>(keys.mcpServers, (l) => l?.filter((s) => s.id !== e.serverId));
+      void qc.invalidateQueries({ queryKey: ["agent-tools"] });
+      return;
+    case "agent.tools.changed":
+      void qc.invalidateQueries({ queryKey: e.agentId ? keys.agentTools(e.agentId) : ["agent-tools"] });
+      return;
+    case "memory.upsert":
+    case "memory.deleted":
+      void qc.invalidateQueries({ queryKey: ["memories"] });
       return;
     case "device.revoked":
       if (e.deviceId === myDeviceId) qc.setQueryData(keys.me, null);

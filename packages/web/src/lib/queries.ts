@@ -6,13 +6,24 @@ import {
   type AgentBody,
   type AgentPatchBody,
   type AgentsResponse,
+  type AgentToolsPatchBody,
+  type AgentToolsResponse,
   type AgentView,
   type ConversationResponse,
   type DevicesResponse,
   type Harness,
   type HarnessesResponse,
+  type McpServerBody,
+  type McpServerPatchBody,
+  type McpServersResponse,
+  type McpServerView,
+  type MemoriesResponse,
+  type Memory,
+  type MemoryBody,
+  type MemoryPatchBody,
   type MeResponse,
   type MessagesResponse,
+  mcpPaths,
   paths,
   type SendMessageResponse,
 } from "@vibe-center/shared";
@@ -36,6 +47,10 @@ export const keys = {
   devices: ["devices"] as const,
   conversation: (id: string) => ["conversation", id] as const,
   messages: (conversationId: string) => ["messages", conversationId] as const,
+  mcpServers: ["mcp-servers"] as const,
+  agentTools: (agentId: string) => ["agent-tools", agentId] as const,
+  /** `scope`: an agent id, "shared", or "" for all. */
+  memories: (scope: string, q: string) => ["memories", scope, q] as const,
 };
 
 /** The signed-in device, or null when signed out (401). */
@@ -134,5 +149,91 @@ export function useRevokeDevice() {
   return useMutation({
     mutationFn: (id: string) => api.delete(paths.device(id)),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.devices }),
+  });
+}
+
+// ---- MCP servers, agent tools, memories (phase 2a) ----------------------------------------------
+
+export const useMcpServers = () =>
+  useQuery({ queryKey: keys.mcpServers, queryFn: () => api.get<McpServersResponse>(mcpPaths.servers) });
+
+function upsertServer(qc: QueryClient, server: McpServerView) {
+  qc.setQueryData<McpServersResponse>(keys.mcpServers, (list) =>
+    list
+      ? list.some((s) => s.id === server.id)
+        ? list.map((s) => (s.id === server.id ? server : s))
+        : [...list, server]
+      : list,
+  );
+}
+
+export function useSaveMcpServer(id?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: McpServerBody | McpServerPatchBody) =>
+      id
+        ? api.patch<McpServerView>(mcpPaths.server(id), body)
+        : api.post<McpServerView>(mcpPaths.servers, body),
+    onSuccess: (server) => upsertServer(qc, server),
+  });
+}
+
+export function useDeleteMcpServer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(mcpPaths.server(id)),
+    onSuccess: (_, id) =>
+      qc.setQueryData<McpServersResponse>(keys.mcpServers, (l) => l?.filter((s) => s.id !== id)),
+  });
+}
+
+export function useRefreshMcpServer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<McpServerView>(mcpPaths.serverRefresh(id)),
+    onSuccess: (server) => upsertServer(qc, server),
+  });
+}
+
+export const useAgentTools = (agentId: string) =>
+  useQuery({
+    queryKey: keys.agentTools(agentId),
+    queryFn: () => api.get<AgentToolsResponse>(mcpPaths.agentTools(agentId)),
+  });
+
+export function useSetAgentTool(agentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AgentToolsPatchBody) =>
+      api.patch<AgentToolsResponse>(mcpPaths.agentTools(agentId), body),
+    onSuccess: (groups) => qc.setQueryData(keys.agentTools(agentId), groups),
+  });
+}
+
+export const useMemories = (scope: string, q: string) =>
+  useQuery({
+    queryKey: keys.memories(scope, q),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (scope) params.set("scope", scope);
+      if (q.trim()) params.set("q", q.trim());
+      return api.get<MemoriesResponse>(`${mcpPaths.memories}?${params}`);
+    },
+  });
+
+export function useSaveMemory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id?: string; body: MemoryBody | MemoryPatchBody }) =>
+      v.id ? api.patch<Memory>(mcpPaths.memory(v.id), v.body) : api.post<Memory>(mcpPaths.memories, v.body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
+  });
+}
+
+export function useDeleteMemory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(mcpPaths.memory(id)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
   });
 }

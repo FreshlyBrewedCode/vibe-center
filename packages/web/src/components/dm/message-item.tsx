@@ -1,11 +1,22 @@
 import type { AgentView, Message } from "@vibe-center/shared";
-import { AlertTriangle, Check, ChevronRight, Loader2, ShieldQuestion, User, Wrench, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  CornerDownRight,
+  Loader2,
+  ShieldQuestion,
+  User,
+  Wrench,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useAnswerPermission } from "@/lib/queries";
+import { useAgent, useAnswerPermission } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "../agent-avatar";
 import { Markdown } from "../markdown";
+import { GatewayCallDetails, gatewayTitle } from "../mcp/gateway-call";
 
 /** One row in the DM. `showHeader` is false for follow-ups from the same sender. */
 export function MessageItem({
@@ -96,11 +107,17 @@ function Row({
   children: React.ReactNode;
 }) {
   const isUser = m.role === "user";
+  // Prompts from another agent (send_message_to_agent) and replies delivered back from it.
+  const meta = isUser && (m.kind === "text" || m.kind === "voice_transcript") ? m.data : null;
+  const relay = meta?.fromAgentId && (meta.source === "agent" || meta.source === "event") ? meta : null;
+  const fromAgent = useAgent(relay?.fromAgentId ?? "");
   return (
     <div data-testid={`message-${m.role}`} className={cn("flex gap-3 px-4", showHeader ? "pt-3" : "pt-0.5")}>
       <div className="w-8 shrink-0">
         {showHeader &&
-          (isUser ? (
+          (fromAgent ? (
+            <AgentAvatar avatar={fromAgent.avatar} />
+          ) : isUser ? (
             <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted">
               <User className="size-4 text-muted-foreground" />
             </span>
@@ -111,7 +128,15 @@ function Row({
       <div className="min-w-0 flex-1">
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-sm">{isUser ? "You" : agent.name}</span>
+            <span className="font-semibold text-sm">
+              {relay ? (fromAgent?.name ?? "Another agent") : isUser ? "You" : agent.name}
+            </span>
+            {relay && (
+              <span data-testid="relay" className="flex items-center gap-1 text-muted-foreground text-xs">
+                <CornerDownRight className="size-3" />
+                {relay.source === "agent" ? `message to ${agent.name}` : `reply to ${agent.name}`}
+              </span>
+            )}
             <time className="text-muted-foreground text-xs">
               {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </time>
@@ -164,7 +189,7 @@ function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call
   return (
     <div data-testid="tool-call" data-status={d.toolStatus}>
       <Collapsible
-        label={d.title}
+        label={d.gateway ? gatewayTitle(d.gateway) : d.title}
         icon={
           <>
             <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
@@ -172,9 +197,17 @@ function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call
           </>
         }
       >
-        {d.rawInput !== undefined && <Pre label="Input" value={d.rawInput} />}
-        {d.content.length > 0 && <Pre label="Output" value={d.content.join("\n\n")} />}
-        {d.content.length === 0 && d.rawOutput !== undefined && <Pre label="Output" value={d.rawOutput} />}
+        {d.gateway ? (
+          <GatewayCallDetails call={d.gateway} />
+        ) : (
+          <>
+            {d.rawInput !== undefined && <Pre label="Input" value={d.rawInput} />}
+            {d.content.length > 0 && <Pre label="Output" value={d.content.join("\n\n")} />}
+            {d.content.length === 0 && d.rawOutput !== undefined && (
+              <Pre label="Output" value={d.rawOutput} />
+            )}
+          </>
+        )}
       </Collapsible>
     </div>
   );

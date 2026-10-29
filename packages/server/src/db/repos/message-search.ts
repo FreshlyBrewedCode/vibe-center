@@ -93,7 +93,7 @@ export class MessageSearchRepo {
     }
     return this.db
       .query<Row, (string | number)[]>(
-        `SELECT ${COLUMNS}, snippet(messages_fts, 0, '«', '»', '…', 24) AS snippet
+        `SELECT ${COLUMNS}, snippet(messages_fts, 0, '', '', '…', 24) AS snippet
          FROM messages_fts JOIN messages m ON m.seq = messages_fts.rowid ${JOINS}
          WHERE ${where.join(" AND ")}
          ORDER BY rank LIMIT ?`,

@@ -12,12 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppMemoriesRouteImport } from './routes/_app/memories'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppAgentsNewRouteImport } from './routes/_app/agents/new'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app/settings/appearance'
 import { Route as AppSettingsDevicesRouteImport } from './routes/_app/settings/devices'
 import { Route as AppSettingsHarnessesRouteImport } from './routes/_app/settings/harnesses'
+import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings/mcp'
 import { Route as AppAgentsAgentIdIndexRouteImport } from './routes/_app/agents/$agentId/index'
 import { Route as AppAgentsAgentIdEditRouteImport } from './routes/_app/agents/$agentId/edit'
 
@@ -33,6 +35,11 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMemoriesRoute = AppMemoriesRouteImport.update({
+  id: '/memories',
+  path: '/memories',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -65,6 +72,11 @@ const AppSettingsHarnessesRoute = AppSettingsHarnessesRouteImport.update({
   path: '/harnesses',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppAgentsAgentIdIndexRoute = AppAgentsAgentIdIndexRouteImport.update({
   id: '/agents/$agentId/',
   path: '/agents/$agentId/',
@@ -79,22 +91,26 @@ const AppAgentsAgentIdEditRoute = AppAgentsAgentIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/memories': typeof AppMemoriesRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/agents/new': typeof AppAgentsNewRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/devices': typeof AppSettingsDevicesRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/memories': typeof AppMemoriesRoute
   '/': typeof AppIndexRoute
   '/agents/new': typeof AppAgentsNewRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/devices': typeof AppSettingsDevicesRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId': typeof AppAgentsAgentIdIndexRoute
@@ -103,12 +119,14 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/memories': typeof AppMemoriesRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/agents/new': typeof AppAgentsNewRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/devices': typeof AppSettingsDevicesRoute
   '/_app/settings/harnesses': typeof AppSettingsHarnessesRoute
+  '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/_app/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
@@ -118,22 +136,26 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/memories'
     | '/settings'
     | '/agents/new'
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/harnesses'
+    | '/settings/mcp'
     | '/settings/'
     | '/agents/$agentId/edit'
     | '/agents/$agentId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/memories'
     | '/'
     | '/agents/new'
     | '/settings/appearance'
     | '/settings/devices'
     | '/settings/harnesses'
+    | '/settings/mcp'
     | '/settings'
     | '/agents/$agentId/edit'
     | '/agents/$agentId'
@@ -141,12 +163,14 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/memories'
     | '/_app/settings'
     | '/_app/'
     | '/_app/agents/new'
     | '/_app/settings/appearance'
     | '/_app/settings/devices'
     | '/_app/settings/harnesses'
+    | '/_app/settings/mcp'
     | '/_app/settings/'
     | '/_app/agents/$agentId/edit'
     | '/_app/agents/$agentId/'
@@ -178,6 +202,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/memories': {
+      id: '/_app/memories'
+      path: '/memories'
+      fullPath: '/memories'
+      preLoaderRoute: typeof AppMemoriesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -222,6 +253,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsHarnessesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/mcp': {
+      id: '/_app/settings/mcp'
+      path: '/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof AppSettingsMcpRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/agents/$agentId/': {
       id: '/_app/agents/$agentId/'
       path: '/agents/$agentId'
@@ -243,6 +281,7 @@ interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsDevicesRoute: typeof AppSettingsDevicesRoute
   AppSettingsHarnessesRoute: typeof AppSettingsHarnessesRoute
+  AppSettingsMcpRoute: typeof AppSettingsMcpRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -250,6 +289,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsDevicesRoute: AppSettingsDevicesRoute,
   AppSettingsHarnessesRoute: AppSettingsHarnessesRoute,
+  AppSettingsMcpRoute: AppSettingsMcpRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 
@@ -258,6 +298,7 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppMemoriesRoute: typeof AppMemoriesRoute
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppAgentsNewRoute: typeof AppAgentsNewRoute
@@ -266,6 +307,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppMemoriesRoute: AppMemoriesRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppAgentsNewRoute: AppAgentsNewRoute,
