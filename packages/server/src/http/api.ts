@@ -10,6 +10,7 @@ import {
   HarnessBody,
   type HarnessesResponse,
   HarnessPatchBody,
+  type InfoResponse,
   type MeResponse,
   MessagesQuery,
   type MessagesResponse,
@@ -23,6 +24,7 @@ import {
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { SESSION_COOKIE, SESSION_MAX_AGE_S } from "../auth/auth.ts";
+import { VERSION } from "../config.ts";
 import { HttpError } from "../domain/errors.ts";
 import type { Services } from "../services.ts";
 import { type AuthedEnv, handleError, requireDevice, sameOrigin } from "./middleware.ts";
@@ -64,6 +66,9 @@ export function createApi(s: Services): Hono<AuthedEnv> {
   api.use(requireDevice(s));
 
   api.get("/auth/me", (c) => c.json<MeResponse>({ device: c.get("device") }));
+  api.get("/info", (c) =>
+    c.json<InfoResponse>({ version: VERSION, dataDir: s.dataDir, publicUrl: s.publicUrl }),
+  );
   api.post("/auth/logout", (c) => {
     s.auth.revoke(c.get("device").id);
     deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });

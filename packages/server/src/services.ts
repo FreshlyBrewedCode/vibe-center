@@ -30,6 +30,9 @@ export interface Services {
   agents: AgentService;
   /** MCP servers, per-agent tools, memories and the gateway (phase 2a). */
   mcp: McpService;
+  /** The tailnet HTTPS URL `tailscale serve` published, if any. Set once up by the CLI. */
+  publicUrl: string | null;
+  setPublicUrl(url: string | null): void;
   close(): Promise<void>;
 }
 
@@ -47,7 +50,7 @@ export function createServices(opts: ServicesOptions): Services {
   });
   const agents = new AgentService(repos, bus, presence, harnesses, chat);
   mcp.bind({ chat, presence });
-  return {
+  const services: Services = {
     dataDir: opts.dataDir,
     repos,
     bus,
@@ -57,10 +60,15 @@ export function createServices(opts: ServicesOptions): Services {
     chat,
     agents,
     mcp,
+    publicUrl: null,
+    setPublicUrl(url) {
+      services.publicUrl = url;
+    },
     async close() {
       await chat.dispose();
       await mcp.close();
       repos.db.close();
     },
   };
+  return services;
 }

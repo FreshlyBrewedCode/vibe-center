@@ -24,6 +24,9 @@ export function expandHome(p: string): string {
   return p;
 }
 
+/** Shown in Settings → General. Bump by hand; no release pipeline yet. */
+export const VERSION = "0.1.0";
+
 export const DEFAULT_PORT = 7880;
 /** 443 and 8443 are already served on dev; see prototype/voice-loop/run.sh. */
 export const DEFAULT_HTTPS_PORT = 7443;

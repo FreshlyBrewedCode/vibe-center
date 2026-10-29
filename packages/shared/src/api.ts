@@ -29,6 +29,7 @@ export const paths = {
   harnessProbe: (id: string) => `/api/harnesses/${id}/probe`,
   devices: "/api/devices",
   device: (id: string) => `/api/devices/${id}`,
+  info: "/api/info",
   ws: "/ws",
 } as const;
 
@@ -132,3 +133,10 @@ export interface SendMessageResponse {
 export type HarnessesResponse = Harness[];
 export type DevicesResponse = Device[];
 export type SearchResponse = MessageSearchHit[];
+/** Mostly-static info for the General settings page. */
+export interface InfoResponse {
+  version: string;
+  dataDir: string;
+  /** The tailnet HTTPS URL `tailscale serve` published, if any. */
+  publicUrl: string | null;
+}

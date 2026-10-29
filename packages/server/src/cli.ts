@@ -109,6 +109,7 @@ async function main(): Promise<number> {
     if (!values.local) {
       try {
         ts = await tailscaleServe(httpsPort, webPort);
+        app.services.setPublicUrl(ts.url);
         cleanups.push(() => ts?.stop());
       } catch (e) {
         console.warn(`Not published on the tailnet (${(e as Error).message}). Use --local to skip this.`);
