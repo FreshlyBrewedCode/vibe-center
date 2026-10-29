@@ -165,6 +165,7 @@ export class TurnRecorder {
     const existing = existingId ? this.repos.messages.get(existingId) : null;
     const prev: ToolCallData | null = existing?.kind === "tool_call" ? existing.data : null;
     const data: ToolCallData = {
+      ...prev, // keeps fields others attach, e.g. the MCP gateway's `gateway`
       toolCallId: u.toolCallId,
       title: u.title ?? prev?.title ?? "Tool call",
       toolKind: u.kind ?? prev?.toolKind ?? null,

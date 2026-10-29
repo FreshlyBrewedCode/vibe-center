@@ -12,12 +12,21 @@
 //   crash        exits with code 3 mid-turn
 //   whoami       replies with the system prompt, model, mode and prompt blocks it received
 //   history      replies with how many prompts this session has seen
+//   mcp-call <tool> <json args>   calls the tool on the session's first MCP server (the app's
+//                gateway), reported as a tool call like Claude Code does (title mcp__vibe__<tool>,
+//                `_meta["claudecode/toolUseId"]`), then replies "Result: <text>"
+//   mcp-silent <tool> <json args> the same without reporting the tool call over ACP
+//   mcp-list     replies with the names of the MCP server's tools
+//   pingpong <to> <me>  sends "pingpong <me> <to>" to agent <to> with send_message_to_agent
 //
 // Env: FAKE_ACP_NO_SYSTEM_PROMPT=1 hides the systemPrompt capability, FAKE_ACP_NO_RESUME=1 the
-// resume capability, FAKE_ACP_STATE=<file> persists sessions so they can be resumed by a new
+// resume capability, FAKE_ACP_NO_MCP_HTTP=1 the HTTP MCP capability (stdio servers only), FAKE_ACP_STATE=<file> persists sessions so they can be resumed by a new
 // process.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import * as acp from "../src/acp/protocol.ts";
 
 interface FakeSession {
@@ -25,6 +34,7 @@ interface FakeSession {
   model: string;
   mode: string;
   prompts: number;
+  mcpServers: acp.McpServer[];
 }
 
 const statePath = process.env.FAKE_ACP_STATE;
@@ -35,6 +45,32 @@ const save = () => {
   if (statePath) writeFileSync(statePath, JSON.stringify(Object.fromEntries(sessions)));
 };
 const running = new Map<string, AbortController>();
+const mcpClients = new Map<string, Client>();
+
+/** One MCP client per session, to the first server it was given (the app's gateway). */
+async function mcpClient(sessionId: string, s: FakeSession): Promise<Client> {
+  const existing = mcpClients.get(sessionId);
+  if (existing) return existing;
+  const server = s.mcpServers[0];
+  if (!server) throw new Error("no MCP server in this session");
+  const client = new Client({ name: "fake-agent", version: "1.0.0" });
+  if ("type" in server && server.type === "http") {
+    const headers = Object.fromEntries(server.headers.map((h) => [h.name, h.value]));
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(server.url), { requestInit: { headers } }),
+    );
+  } else if (!("type" in server)) {
+    const env = Object.fromEntries((server.env ?? []).map((e) => [e.name, e.value]));
+    await client.connect(new StdioClientTransport({ command: server.command, args: server.args, env }));
+  } else {
+    throw new Error(`unsupported MCP server type ${server.type}`);
+  }
+  mcpClients.set(sessionId, client);
+  return client;
+}
+
+const resultText = (r: Record<string, unknown>) =>
+  ((r.content ?? []) as { type: string; text?: string }[]).map((c) => c.text ?? `[${c.type}]`).join("\n");
 
 const MODELS = [
   { value: "fake-fast", name: "Fake Fast" },
@@ -77,7 +113,7 @@ const app = acp
     agentCapabilities: {
       loadSession: false,
       promptCapabilities: { image: false, embeddedContext: false },
-      mcpCapabilities: { http: true, sse: false },
+      mcpCapabilities: { http: !process.env.FAKE_ACP_NO_MCP_HTTP, sse: false },
       sessionCapabilities: {
         close: {},
         ...(process.env.FAKE_ACP_NO_RESUME ? {} : { resume: {} }),
@@ -93,6 +129,7 @@ const app = acp
       model: "fake-fast",
       mode: "default",
       prompts: 0,
+      mcpServers: params.mcpServers,
     };
     sessions.set(sessionId, s);
     save();
@@ -101,6 +138,9 @@ const app = acp
   .onRequest("session/resume", ({ params }) => {
     const s = sessions.get(params.sessionId);
     if (!s) throw acp.RequestError.invalidParams({ sessionId: params.sessionId }, "unknown session");
+    s.mcpServers = params.mcpServers ?? [];
+    mcpClients.get(params.sessionId)?.close();
+    mcpClients.delete(params.sessionId);
     return { configOptions: configOptions(s) };
   })
   .onRequest("session/close", ({ params }) => {
@@ -146,6 +186,49 @@ const app = acp
 
     try {
       await update({ sessionUpdate: "usage_update", used: 100, size: 200_000 });
+      const call = /^mcp-(call|silent) (\S+)\s*(.*)$/s.exec(text.trim());
+      const ping = /pingpong (\S+) (\S+)/.exec(text);
+      if (call || ping) {
+        const tool = call ? call[2]! : "send_message_to_agent";
+        const args = call
+          ? JSON.parse(call[3] || "{}")
+          : { agent: ping![1], message: `pingpong ${ping![2]} ${ping![1]}` };
+        const report = !call || call[1] === "call";
+        const toolCallId = `mcp-${crypto.randomUUID()}`;
+        if (report) {
+          await update({
+            sessionUpdate: "tool_call",
+            toolCallId,
+            title: `mcp__vibe__${tool}`,
+            kind: "other",
+            status: "pending",
+            rawInput: args,
+          });
+        }
+        const client = await mcpClient(sessionId, s);
+        const r = await client.callTool({
+          name: tool,
+          arguments: args,
+          _meta: { "claudecode/toolUseId": toolCallId },
+        });
+        const out = resultText(r);
+        if (report) {
+          await update({
+            sessionUpdate: "tool_call_update",
+            toolCallId,
+            status: r.isError ? "failed" : "completed",
+            content: [{ type: "content", content: { type: "text", text: out } }],
+          });
+        }
+        await say(`Result: ${out}`, 1);
+        return stop();
+      }
+      if (lower.trim() === "mcp-list") {
+        const client = await mcpClient(sessionId, s);
+        const { tools } = await client.listTools();
+        await say(`Tools: ${tools.map((t) => t.name).join(", ")}`, 1);
+        return stop();
+      }
       if (lower.includes("crash")) {
         await say("About to crash.", 1);
         process.exit(3);

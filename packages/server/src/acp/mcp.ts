@@ -15,15 +15,14 @@ export interface McpSessionContext {
   agentId: string;
   /** The app's id for the session (DB `sessions.id`), stable across harness restarts. */
   sessionKey: string;
+  /** What the harness advertised in `initialize` (e.g. whether it can do HTTP MCP servers). */
+  capabilities?: acp.AgentCapabilities;
 }
 
 /**
- * SEAM for phase 2a. The runtime asks this for every ACP session it creates or resumes.
- * TODO(phase 2a): implement a provider that mints a per-session credential and returns the
- * app's MCP gateway as one HTTP server, e.g.
- *   { servers: [{ type: "http", name: "vibe", url: `${base}/mcp`, headers: [{ name: "Authorization",
- *     value: `Bearer ${credential}` }] }], allowedTools: ["mcp__vibe"] }
- * and pass it to createServer({ mcp }) (see server.ts).
+ * What the runtime asks for every ACP session it creates or resumes. The app's implementation is
+ * the MCP gateway (`mcp/gateway.ts`): one HTTP server `vibe` with a per-session credential, or a
+ * stdio bridge to it for harnesses without HTTP MCP. `noMcp` is for tests and probes.
  */
 export interface McpProvider {
   forSession(ctx: McpSessionContext): Promise<McpSetup>;

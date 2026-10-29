@@ -1,5 +1,4 @@
 import type { McpProvider } from "./acp/mcp.ts";
-import { noMcp } from "./acp/mcp.ts";
 import type { RuntimeTimeouts } from "./acp/runtime.ts";
 import { AuthService } from "./auth/auth.ts";
 import { dataPaths } from "./config.ts";
@@ -10,10 +9,11 @@ import { ChatService } from "./domain/chat.ts";
 import { HarnessService } from "./domain/harnesses.ts";
 import { PresenceStore } from "./domain/presence.ts";
 import { EventBus } from "./events/bus.ts";
+import { McpService } from "./mcp/service.ts";
 
 export interface ServicesOptions {
   dataDir: string;
-  /** SEAM (phase 2a): the MCP gateway's provider. Defaults to no MCP servers. */
+  /** SEAM (phase 2a): the MCP provider for ACP sessions. Defaults to the app's MCP gateway. */
   mcp?: McpProvider;
   timeouts?: Partial<RuntimeTimeouts>;
 }
@@ -28,6 +28,8 @@ export interface Services {
   harnesses: HarnessService;
   chat: ChatService;
   agents: AgentService;
+  /** MCP servers, per-agent tools, memories and the gateway (phase 2a). */
+  mcp: McpService;
   close(): Promise<void>;
 }
 
@@ -37,12 +39,14 @@ export function createServices(opts: ServicesOptions): Services {
   const presence = new PresenceStore(bus);
   const auth = new AuthService(repos, bus);
   const harnesses = new HarnessService(repos, bus);
+  const mcp = new McpService(repos, bus);
   const chat = new ChatService(repos, bus, presence, harnesses, {
     dataDir: opts.dataDir,
-    mcp: opts.mcp ?? noMcp,
+    mcp: opts.mcp ?? mcp.gateway,
     timeouts: opts.timeouts,
   });
   const agents = new AgentService(repos, bus, presence, harnesses, chat);
+  mcp.bind({ chat, presence });
   return {
     dataDir: opts.dataDir,
     repos,
@@ -52,8 +56,10 @@ export function createServices(opts: ServicesOptions): Services {
     harnesses,
     chat,
     agents,
+    mcp,
     async close() {
       await chat.dispose();
+      await mcp.close();
       repos.db.close();
     },
   };

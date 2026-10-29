@@ -166,6 +166,22 @@ export interface ToolCallData {
   /** Text rendering of the tool's ACP content blocks (output, diffs, terminal ids). */
   content: string[];
   locations: { path: string; line?: number | null }[];
+  /** Set when the call went through the app's MCP gateway (phase 2a). */
+  gateway?: GatewayCallInfo;
+}
+
+/** A tool call the MCP gateway served, as recorded by the gateway itself. */
+export interface GatewayCallInfo {
+  callId: string;
+  /** Server name (`builtin` for the app's own tools) and the tool's name on that server. */
+  server: string;
+  tool: string;
+  args: unknown;
+  /** Text of the result content, once finished. */
+  result: string | null;
+  isError: boolean;
+  status: "running" | "completed" | "failed";
+  durationMs: number | null;
 }
 
 export interface PermissionOptionData {

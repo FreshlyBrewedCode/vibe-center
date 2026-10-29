@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import type { McpProvider } from "./acp/mcp.ts";
 import type { RuntimeTimeouts } from "./acp/runtime.ts";
 import { createApi } from "./http/api.ts";
+import { createMcpApi } from "./http/mcp-api.ts";
 import { staticHandler, WEB_DIST } from "./http/static.ts";
 import { type WsData, WsHub } from "./http/ws.ts";
+import { GATEWAY_PATH } from "./mcp/gateway.ts";
 import { createServices, type Services } from "./services.ts";
 
 export interface ServerOptions {
@@ -14,7 +16,7 @@ export interface ServerOptions {
   hostname?: string;
   /** Serve the built SPA from here; null when Vite serves it (dev mode). */
   webDist?: string | null;
-  /** SEAM (phase 2a): plug the MCP gateway in here. */
+  /** Overrides the MCP provider for ACP sessions (default: the app's gateway at /mcp). */
   mcp?: McpProvider;
   timeouts?: Partial<RuntimeTimeouts>;
   /** Probe every harness in the background on start (health + models). Off in tests. */
@@ -35,7 +37,8 @@ export function createServer(opts: ServerOptions): AppServer {
   const hub = new WsHub(services);
   const app = new Hono();
   app.route("/api", createApi(services));
-  // Phase 2a mounts the MCP gateway (e.g. app.route("/mcp", ...)) and 2b the voice bridge here.
+  app.route("/api", createMcpApi(services));
+  // Phase 2b mounts the voice bridge here.
   const serveStatic = opts.webDist === null ? null : staticHandler(opts.webDist ?? WEB_DIST);
 
   const server = Bun.serve<WsData>({
@@ -45,6 +48,7 @@ export function createServer(opts: ServerOptions): AppServer {
     fetch(req, srv) {
       const { pathname } = new URL(req.url);
       if (pathname === "/ws") return hub.upgrade(req, srv);
+      if (pathname === GATEWAY_PATH) return services.mcp.gateway.handle(req);
       if (pathname.startsWith("/api/") || pathname === "/api") return app.fetch(req);
       if (serveStatic) return serveStatic(req);
       return new Response("not found", { status: 404 });
@@ -52,9 +56,13 @@ export function createServer(opts: ServerOptions): AppServer {
     websocket: hub.handler,
   });
   hub.attach(server);
-  if (opts.probeOnStart) services.harnesses.probeAll();
-
   const port = server.port!;
+  services.mcp.gateway.setBaseUrl(`http://127.0.0.1:${port}`);
+  if (opts.probeOnStart) {
+    services.harnesses.probeAll();
+    services.mcp.connectAll();
+  }
+
   return {
     services,
     port,

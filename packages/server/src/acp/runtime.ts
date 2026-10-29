@@ -469,7 +469,11 @@ export class AgentRuntime {
     }
     const { agent, adapter } = this.cfg;
     const caps = proc.init.agentCapabilities ?? {};
-    const mcp = await this.opts.mcp.forSession({ agentId: agent.agentId, sessionKey: this.sessionKey });
+    const mcp = await this.opts.mcp.forSession({
+      agentId: agent.agentId,
+      sessionKey: this.sessionKey,
+      capabilities: caps,
+    });
     const ctx = { ...agent, capabilities: caps, mcp };
     const base: acp.NewSessionRequest = {
       cwd: agent.cwd,
