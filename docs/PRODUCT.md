@@ -40,7 +40,9 @@ remote.
   session per DM; "New session" starts fresh (a divider in the DM) while history stays
   searchable
 - **MCP server**: configured once in the app (stdio command or HTTP URL); its tools are
-  discovered and listed. Per agent, tools are enabled or disabled, **grouped by server**
+  discovered and listed. Per agent, tools are enabled or disabled, **grouped by server**.
+  Built-in tools are on by default; a newly added server's tools are off until enabled for an
+  agent; tools a server adds later follow its per-agent switch. Changes apply to running sessions
 - **Built-in tools**: the app's own MCP server, enabled per agent like any other:
   - **memory**: save, search, list, update, delete. Scope: this agent's own memories or shared
     ones. Users can browse and edit memories in the UI

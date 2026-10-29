@@ -10,7 +10,7 @@ ACP agent) you chat with in a DM; calls (voice) come next. Read before changing 
 ```sh
 bun install
 bun run check          # biome lint + strict tsc (all packages + e2e) + bun test. Must pass before every commit
-bun run e2e            # builds the web app, runs Playwright against a throwaway server
+bun run e2e            # builds the web app, runs Playwright against a throwaway server (port 7899; VC_E2E_PORT=… if taken)
 bun run start          # vibe-center start: http://localhost:7880 + https://<host>.ts.net:7443
 bun run dev            # same with Vite HMR (web on port+1, proxying /api and /ws)
 bun packages/server/src/cli.ts start --local --data-dir /tmp/vc   # localhost only, scratch data

@@ -1,7 +1,7 @@
-# Vibe Center: architecture (v1, phase 1)
+# Vibe Center: architecture (v1)
 
-What exists after phase 1, how it fits together, and where phases 2a (MCP), 2b (voice) and 2c
-(UI) plug in. The product spec is [PRODUCT.md](PRODUCT.md); commands and conventions are in
+What exists after phase 1 and phase 2a (MCP gateway), how it fits together, and where phases 2b
+(voice) and 2c (UI) plug in. The product spec is [PRODUCT.md](PRODUCT.md); commands and conventions are in
 [AGENTS.md](../AGENTS.md).
 
 ## Components
@@ -13,15 +13,17 @@ browser (any device on the tailnet)
 vibe-center start  (one Bun process, binds 127.0.0.1:7880 only)
   ├─ Hono JSON API      /api/*      cookie auth, zod-validated bodies
   ├─ WebSocket channel  /ws         typed ServerEvents to every device
+  ├─ MCP gateway        /mcp        streamable HTTP, per-session bearer credential, loopback only
   ├─ SPA                /*          packages/web/dist  (dev: Vite on port+1 proxies /api,/ws)
   ├─ control socket     ~/.vibe-center/control.sock (0600)  ← `vibe-center link`
   ├─ SQLite             ~/.vibe-center/vibe-center.db  (WAL, FTS5)
-  └─ one harness process per active agent, ACP over stdio
-       claude-agent-acp (node) │ opencode acp │ custom command
+  ├─ one harness process per active agent, ACP over stdio
+  │    claude-agent-acp (node) │ opencode acp │ custom command
+  │      └─ MCP client → http://127.0.0.1:<port>/mcp  (the gateway; one "vibe" server per session)
+  └─ one process/connection per configured upstream MCP server (stdio child or HTTP client)
 ```
 
-Phase 2a adds the MCP gateway (an HTTP endpoint in the same process); phase 2b adds the Python
-voice worker as a child process that calls back into the app.
+Phase 2b adds the Python voice worker as a child process that calls back into the app.
 
 ## Layout
 
@@ -37,9 +39,10 @@ packages/server/src/
   config.ts               data dir, ports
   control.ts, tailscale.ts
   auth/auth.ts            link tokens, device sessions
-  http/                   api.ts (core routes), middleware.ts, ws.ts, static.ts, origin.ts
+  http/                   api.ts (core routes), mcp-api.ts, middleware.ts, ws.ts, static.ts, origin.ts
   domain/                 chat.ts, turns.ts, agents.ts, harnesses.ts, presence.ts, errors.ts
   acp/                    the harness layer (below); knows nothing about storage or HTTP
+  mcp/                    the MCP gateway, upstream clients, tool catalog, built-in tools (below)
   db/                     index.ts (open + migrate), migrations/*.sql, repos/*.ts
   events/bus.ts           in-process EventBus
 packages/server/test/     bun tests; fake-agent.ts is a scripted ACP agent
@@ -64,7 +67,7 @@ e2e/                      Playwright
   (`--https-port`, default 7443, because 443 and 8443 are taken on dev). `--local` skips it.
   Chromium accepts Secure cookies on `http://localhost`, which the tests rely on.
 
-## Data model (`db/migrations/0001_core.sql`)
+## Data model (`db/migrations/`)
 
 | table | what |
 |---|---|
@@ -75,8 +78,10 @@ e2e/                      Playwright
 | `turns` | one prompt and its outcome: `source` (user/voice/agent/event), `from_agent_id`, status, stop reason, error |
 | `messages` | `seq` (global order) + `kind`: text, thought, tool_call, permission, plan, voice_transcript, session (divider), error; `data` JSON per kind (see `shared/src/domain.ts`) |
 | `messages_fts` | FTS5 over message text; streaming messages are indexed once they stop streaming |
-| `mcp_servers`, `agent_tools` | phase 2a: configured servers and per-agent tool enablement (`tool_name '*'` = whole server) |
-| `memories` (+ FTS5) | phase 2a: `agent_id NULL` = shared |
+| `mcp_servers` | configured MCP servers: stdio (command/args/env/cwd) or http (url/headers), cached tool list and status; row `builtin` is the app's own server |
+| `agent_tools` | per-agent tool enablement: `tool_name '*'` = the server switch, other rows = per-tool overrides |
+| `mcp_tool_calls` | every call the gateway served: agent, session, turn, server, tool, args, result, timing, and the tool_call message it was attached to |
+| `memories` (+ FTS5) | the memory tools' store; `agent_id NULL` = shared |
 | `devices` | device sessions (hashed secret), last seen, revoked |
 | `settings` | key → JSON (voice URLs, appearance, …) |
 
@@ -119,8 +124,9 @@ edit an applied migration; add a new one.
   (`ok`/`not_installed`/`auth_required`/`error`). `HarnessService` caches the result and
   refreshes the cached options whenever a live session reports them.
 - `mcp.ts`: the **`McpProvider` seam**. The runtime asks it for `{ servers, allowedTools }` for
-  every session it creates or resumes; the servers go into `session/new|resume|load`. Phase 1
-  uses `noMcp`.
+  every session it creates or resumes (passing the harness's `initialize` capabilities); the
+  servers go into `session/new|resume|load`. The app's provider is the MCP gateway (below);
+  `noMcp` remains for probes and tests.
 
 ## Domain layer (`packages/server/src/domain/`)
 
@@ -141,6 +147,76 @@ edit an applied migration; add a new one.
 - On start, turns and messages left `running`/`streaming`/`pending` by a dead server are
   marked interrupted/cancelled.
 
+## MCP gateway and built-in tools (`packages/server/src/mcp/`, phase 2a)
+
+`McpService` (`mcp/service.ts`, `services.mcp`) holds the pieces: the server registry, per-agent
+tool selection, memories for the UI, and the gateway.
+
+**Gateway** (`gateway.ts`, mounted at `/mcp` in `server.ts`):
+
+- **Transport:** MCP streamable HTTP on the app's loopback port, stateful (one MCP session per
+  harness connection, `mcp-session-id`). Both presets advertise `mcpCapabilities.http` (claude-agent-acp
+  0.99: `http`+`sse`; `opencode acp` 1.18: `http`+`sse`). For a harness that doesn't, the provider
+  hands out a **stdio bridge** instead (`mcp/bridge.ts`, run with the server's bun; URL and token in
+  its env), which forwards JSON-RPC unchanged to the same endpoint.
+- **Credentials:** `forSession` mints 32 random bytes per ACP session (create or resume), sent as
+  `Authorization: Bearer …`, kept as SHA-256 in memory, bound to `{ agentId, sessionKey }`. An
+  agent has one live credential: minting revokes the previous one and closes its MCP sessions, as
+  does deleting the agent. Credentials don't survive a restart, nor do the harness processes. The
+  endpoint also refuses anything with `X-Forwarded-For` (came through `tailscale serve`) or
+  `Origin` (a browser), whatever the credential.
+- **What a session sees:** exactly the agent's enabled tools (`catalog.ts`): built-ins under their
+  own names (`memory_save`), upstream tools as `<server>__<tool>` (Claude Code shows
+  `mcp__vibe__github__create_issue`, OpenCode `vibe_github__create_issue`; names over 53 chars are
+  shortened with a hash so Claude's 64-char limit holds). The server's `instructions` tell the
+  model when to use memory and search (Claude Code puts them in its system prompt).
+- **Claude Code:** `allowedTools: ["mcp__vibe"]` pre-allows every gateway tool (no permission
+  round trip; selection is enforced by the gateway), and the adapter's `ENABLE_TOOL_SEARCH=false`
+  loads them up front.
+- **Tool selection** resolves per tool: a per-tool override, else the agent's server switch, else
+  the default: **built-in tools on, any added server off** until enabled for that agent (a new
+  server shouldn't silently give every agent new powers). Tools a server adds later follow the
+  server switch. Globally disabled servers offer nothing.
+- **Live changes:** a selection change (or a server's tools/name/enabled changing) sends
+  `notifications/tools/list_changed` to the agent's live MCP sessions. Claude Code refreshes on it
+  mid-session (verified: an enabled server's tools became callable, and a disabled tool was refused
+  by Claude Code itself, in the same session). Independently, every `tools/call` is checked against
+  the current selection, so a disabled tool never runs, whatever the harness cached. Harnesses that
+  ignore `list_changed` pick changes up with the next session.
+- **Upstream servers** (`upstream.ts`): one shared MCP client per configured server, not per
+  session (a stdio server runs once for all agents). Connects on create/update/refresh and on
+  start (`probeOnStart`), lazily otherwise; reconnects on the next call after a crash; follows the
+  server's own `list_changed`. Status (`connecting/connected/error` with stderr tail) and the
+  discovered tools are cached in `mcp_servers` and published as `mcp.server.upsert`. stdio servers
+  get the MCP SDK's default env (HOME, PATH, USER, …) plus their configured env, not the app's
+  whole environment. HTTP tries streamable HTTP, then the old HTTP+SSE transport.
+- **Secrets:** env values and headers are stored in SQLite (data dir is 0700) and never returned:
+  the API shows keys and, for values of 12+ chars, the last 4. Writes send `{ keep: true }` to keep
+  a stored value; keys left out are removed. Put secrets there, not in args or the URL.
+- **Recording** (`recorder.ts`): every call is logged in `mcp_tool_calls`, then attached to the
+  harness's own ACP tool_call message as `data.gateway` (server, tool, args, result, status,
+  duration), matched by the tool-use id Claude Code sends in `_meta["claudecode/toolUseId"]`, else
+  the exposed name in the title, else identical arguments. Harnesses may announce a call after
+  running it, so unmatched calls wait for new tool_call messages of the turn; a call still
+  unmatched 1.5 s after it finished gets a tool_call message of its own. `TurnRecorder` keeps
+  `gateway` when the harness updates the message.
+
+**Built-in tools** (`mcp/builtin/`, zod schemas → JSON Schema):
+
+- **memory:** `memory_save`, `memory_search` (FTS5 prefix match, any word, plus tags),
+  `memory_list`, `memory_update`, `memory_delete`. Scope `agent` (default) or `shared`; an agent can
+  change its own and shared memories only. The descriptions say when to remember and when to look.
+- **conversation search:** `search_conversations` (own DM by default; `scope: "all"`, `agent`,
+  `role`, `since`/`until`; text messages only; the current turn is left out) and
+  `read_conversation` (messages around a hit). SQL in `db/repos/message-search.ts`.
+- **agents:** `list_agents`; `send_message_to_agent(agent, message)` returns at once. The target
+  gets `chat.prompt(target, { source: "agent", fromAgentId, note })`; when its turn ends, the reply
+  (or the failure) goes into the sender's session as `chat.prompt(sender, { source: "event",
+  fromAgentId: target, note })`. Both DMs show it: the target's as a message from the sender, the
+  sender's as the reply, labelled in the UI. **Loop protection:** no self-messages; a hop count per
+  turn (user prompt 0, each message +1, a delivered reply keeps the hop of what it answers) with
+  `MAX_HOPS = 3`, so a ping-pong ends after a few rounds; at most 5 unanswered messages per sender.
+
 ## Live updates (`/ws`, `shared/src/events/`)
 
 One socket per tab; every event goes to every device (single user). The client sends only
@@ -154,6 +230,9 @@ One socket per tab; every event goes to every device (single user). The client s
 | `agent.upsert` / `agent.deleted` / `agent.presence` | sidebar state |
 | `conversation.unread` | unread count + read marker, after new agent messages or a read |
 | `session.started`, `harness.upsert`, `device.revoked` | as named |
+| `mcp.server.upsert` / `mcp.server.deleted` | MCP server config, status or discovered tools changed |
+| `agent.tools.changed` | an agent's tool groups changed (`agentId: null` = all agents) |
+| `memory.upsert` / `memory.deleted` | a memory changed (by an agent's tool or the UI) |
 
 Adding events: put them in your phase's file (`events/mcp.ts`, `events/voice.ts`). Clients
 ignore unknown types, so new events never break older tabs. Server code publishes on the
@@ -178,29 +257,14 @@ ignore unknown types, so new events never break older tabs. Server code publishe
 Ownership below is meant to keep parallel worktrees from colliding. "Shared" files are expected
 to change by a line or two. Keep it that way, and expect trivial merges there.
 
-### Phase 2a: MCP gateway and built-in tools
+### Phase 2a: MCP gateway and built-in tools (done)
 
-- **Implement `McpProvider`** (`acp/mcp.ts` documents the shape). It mints a per-session
-  credential and returns one HTTP server (`{ type: "http", name: "vibe", url, headers }`) plus
-  `allowedTools: ["mcp__vibe"]` so Claude Code doesn't ask for permission on app tools. Pass it
-  in `createServices({ mcp })` (`services.ts`, shared) through `ServerOptions.mcp`
-  (`server.ts`). OpenCode takes HTTP MCP servers in `session/new` too. Its tools appear as
-  `vibe_<tool>`. Tool enablement is enforced in the gateway, not per harness.
-- Mount the gateway endpoint in `server.ts` next to `/api` (e.g. `/mcp`). It authenticates by
-  the per-session credential, **not** the device cookie.
-- Built-in tools: memory (`memories` + `memories_fts` exist), conversation search
-  (`MessageRepo.search` exists; add "surrounding messages"), agents (list, and send via
-  `chat.prompt(targetId, { source: "agent", fromAgentId, text })`. To return immediately and
-  deliver the reply later into the sender's session, use `done.then(r => chat.prompt(senderId,
-  { source: "event", text: … }))`).
-- Gateway tool calls should be visible in the UI. Publish your own events (`events/mcp.ts`).
-  ACP `tool_call` messages already show what the harness reports.
-- **Owns:** `packages/server/src/mcp/**` (new), `acp/mcp.ts`, `db/repos/{mcp-servers,memories}.ts`
-  (new), new migrations, `shared/src/events/mcp.ts`, a new `shared/src/api-mcp.ts` (export it
-  from `shared/src/index.ts`), routers under `packages/server/src/http/mcp-*.ts` using
-  `middleware.ts`, web `routes/_app/settings/mcp.tsx`, `routes/_app/memories*.tsx`,
-  `components/mcp/**`. **Shared:** `services.ts`, `server.ts`, `db/repos/index.ts`, the
-  `SECTIONS` list in `routes/_app/settings.tsx`, `routeTree.gen.ts` (regenerate, don't merge).
+Described above. To add a built-in tool, add it to a file in `mcp/builtin/` with `tool({ name,
+description, schema, run })`; it appears in every agent's built-in group (on by default) and in
+Settings. Gateway-served tool calls carry `data.gateway` on their tool_call message. Files:
+`packages/server/src/mcp/**`, `http/mcp-api.ts`, `db/repos/{mcp-servers,memories,message-search}.ts`,
+`shared/src/api-mcp.ts`, `shared/src/events/mcp.ts`; web `routes/_app/settings/mcp.tsx`,
+`routes/_app/memories.tsx`, `components/mcp/**`.
 
 ### Phase 2b: voice worker
 
@@ -237,7 +301,7 @@ to change by a line or two. Keep it that way, and expect trivial merges there.
   `lib/events.ts` and `lib/api.ts` as the only data layer. **Shared:** if the UI needs new
   API fields, add them in `shared/src/domain.ts`/`api.ts` and in `packages/server/src/http/api.ts`.
 
-## Known gaps (phase 1)
+## Known gaps
 
 - No message pagination UI, no code highlighting, no ⌘K/search UI, no notifications, no custom
   harness form (API only), no MCP or voice (by design).
@@ -252,3 +316,9 @@ to change by a line or two. Keep it that way, and expect trivial merges there.
   holds one process.
 - Steering (sending into a running turn; claude-agent-acp advertises it) isn't used. Prompts
   queue.
+- MCP (phase 2a): upstream servers are shared by all agents (one process/connection per server),
+  so stateful servers (a browser, a shell) share state between agents. Only tools are proxied
+  (no MCP resources, prompts, sampling or elicitation from upstream servers). OAuth for HTTP MCP
+  servers isn't supported; use a header token. Hop counts for agent messages live in memory.
+- A harness that runs a gateway tool without reporting it over ACP gets a card from the gateway
+  1.5 s after the call; one that reports a call later than that shows two cards.
