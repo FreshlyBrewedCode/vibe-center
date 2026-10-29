@@ -1,11 +1,37 @@
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CodeBlock } from "./code-block";
+
+interface CodeChildProps {
+  className?: string;
+  children?: ReactNode;
+}
 
 /** Agent replies. Raw HTML is not rendered (react-markdown escapes it by default). */
 export function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown text-sm leading-relaxed">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Only fenced blocks reach `pre` (inline code renders a bare `code`), so this is the
+          // one place that knows a block exists and can hand it to CodeBlock for highlighting.
+          pre(props) {
+            const child = Array.isArray(props.children) ? props.children[0] : props.children;
+            const codeProps =
+              child && typeof child === "object" && "props" in child
+                ? (child.props as CodeChildProps)
+                : undefined;
+            const lang = /language-(\S+)/.exec(codeProps?.className ?? "")?.[1];
+            const code = typeof codeProps?.children === "string" ? codeProps.children : null;
+            if (lang && code !== null) return <CodeBlock code={code.replace(/\n$/, "")} lang={lang} />;
+            return <pre>{props.children}</pre>;
+          },
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

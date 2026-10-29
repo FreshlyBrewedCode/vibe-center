@@ -4,8 +4,14 @@ import {
   Check,
   ChevronRight,
   CornerDownRight,
+  FileSearch,
+  FolderOpen,
+  Globe,
   Loader2,
+  Pencil,
   ShieldQuestion,
+  Terminal,
+  Trash2,
   User,
   Wrench,
   X,
@@ -176,8 +182,21 @@ function Collapsible({
   );
 }
 
+// Maps ACP tool kinds to an icon. 2a's richer tool-call cards can extend this; the card stays a
+// `Collapsible` with a label/icon/content, so new tool kinds only need a new icon mapping.
+const TOOL_ICONS: Record<string, typeof Wrench> = {
+  read: FileSearch,
+  edit: Pencil,
+  delete: Trash2,
+  move: FolderOpen,
+  search: FileSearch,
+  execute: Terminal,
+  fetch: Globe,
+};
+
 function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call" }> }) {
   const d = m.data;
+  const Icon = (d.toolKind && TOOL_ICONS[d.toolKind]) || Wrench;
   const statusIcon =
     d.toolStatus === "completed" ? (
       <Check className="size-3.5 text-presence-working" />
@@ -192,7 +211,7 @@ function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call
         label={d.gateway ? gatewayTitle(d.gateway) : d.title}
         icon={
           <>
-            <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
             {statusIcon}
           </>
         }
@@ -201,6 +220,19 @@ function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call
           <GatewayCallDetails call={d.gateway} />
         ) : (
           <>
+            {d.locations.length > 0 && (
+              <div className="flex flex-wrap gap-1 pb-2">
+                {d.locations.map((loc) => (
+                  <code
+                    key={`${loc.path}:${loc.line ?? ""}`}
+                    className="rounded bg-muted px-1.5 py-0.5 text-xs"
+                  >
+                    {loc.path}
+                    {loc.line != null ? `:${loc.line}` : ""}
+                  </code>
+                ))}
+              </div>
+            )}
             {d.rawInput !== undefined && <Pre label="Input" value={d.rawInput} />}
             {d.content.length > 0 && <Pre label="Output" value={d.content.join("\n\n")} />}
             {d.content.length === 0 && d.rawOutput !== undefined && (

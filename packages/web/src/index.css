@@ -115,7 +115,7 @@
   }
 }
 
-/* Minimal markdown styling for chat messages (phase 2c: code highlighting, polish). */
+/* Minimal markdown styling for chat messages. */
 @layer components {
   .markdown > * + * {
     @apply mt-2;
@@ -152,5 +152,72 @@
   .markdown th,
   .markdown td {
     @apply border px-2 py-1;
+  }
+}
+
+/* Syntax highlighting (code-block.tsx / highlight.js), on the same theme tokens as everything
+   else, so highlighted code looks right in both themes without a separate hljs stylesheet. */
+@layer components {
+  .hljs {
+    color: var(--foreground);
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-section,
+  .hljs-link {
+    color: var(--presence-in-call);
+  }
+  .hljs-string,
+  .hljs-title,
+  .hljs-name,
+  .hljs-type,
+  .hljs-attribute,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-addition,
+  .hljs-variable,
+  .hljs-template-tag,
+  .hljs-template-variable {
+    color: var(--presence-working);
+  }
+  .hljs-number,
+  .hljs-deletion {
+    color: var(--presence-error);
+  }
+  .hljs-built_in,
+  .hljs-builtin-name,
+  .hljs-attr,
+  .hljs-function_ .hljs-title,
+  .hljs-class .hljs-title {
+    color: var(--presence-thinking);
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: bold;
+  }
+}
+
+/* A brief highlight for a message jumped to from ⌘K search. */
+@layer components {
+  @keyframes jump-highlight {
+    0%,
+    30% {
+      background-color: color-mix(in oklch, var(--presence-waiting) 20%, transparent);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+  .jump-highlight {
+    animation: jump-highlight 1.6s ease-out;
+    border-radius: var(--radius-md);
   }
 }
