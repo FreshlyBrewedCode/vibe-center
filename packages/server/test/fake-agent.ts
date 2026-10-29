@@ -18,6 +18,9 @@
 //   mcp-silent <tool> <json args> the same without reporting the tool call over ACP
 //   mcp-list     replies with the names of the MCP server's tools
 //   pingpong <to> <me>  sends "pingpong <me> <to>" to agent <to> with send_message_to_agent
+//   weather      a tool call before any text (a voice call plays a filler), then "It is sunny."
+//
+// A `<voice-call>` block (the voice-mode note) is left out of the echo and the keyword match.
 //
 // Env: FAKE_ACP_NO_SYSTEM_PROMPT=1 hides the systemPrompt capability, FAKE_ACP_NO_RESUME=1 the
 // resume capability, FAKE_ACP_NO_MCP_HTTP=1 the HTTP MCP capability (stdio servers only), FAKE_ACP_STATE=<file> persists sessions so they can be resumed by a new
@@ -169,7 +172,10 @@ const app = acp
     const ac = new AbortController();
     running.set(sessionId, ac);
     const signal = ac.signal;
-    const text = params.prompt.map((b) => (b.type === "text" ? b.text : `[${b.type}]`)).join("\n");
+    const text = params.prompt
+      .filter((b) => !(b.type === "text" && b.text.startsWith("<voice-call>")))
+      .map((b) => (b.type === "text" ? b.text : `[${b.type}]`))
+      .join("\n");
     const lower = text.toLowerCase();
     const update = (u: acp.SessionUpdate) => client.notify("session/update", { sessionId, update: u });
     const say = async (t: string, chunks = 3, delayMs = 15) => {
@@ -268,6 +274,19 @@ const app = acp
             { content: "Write the fix", priority: "medium", status: "in_progress" },
           ],
         });
+      }
+      if (lower.includes("weather")) {
+        await update({
+          sessionUpdate: "tool_call",
+          toolCallId: "weather-1",
+          title: "Fetch weather",
+          kind: "fetch",
+          status: "in_progress",
+        });
+        await sleep(300, signal);
+        await update({ sessionUpdate: "tool_call_update", toolCallId: "weather-1", status: "completed" });
+        await say("It is sunny and warm.", 2);
+        return stop();
       }
       if (lower.includes("tool")) {
         await say("Checking.", 1);

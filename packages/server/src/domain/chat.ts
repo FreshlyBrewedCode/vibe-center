@@ -148,6 +148,11 @@ export class ChatService {
     await this.runtimes.get(conv.agentId)?.cancel();
   }
 
+  /** Cancel one turn (running or queued) of an agent without touching its other turns. */
+  cancelTurn(agentId: string, turnId: string): void {
+    this.runtimes.get(agentId)?.cancelPrompt(turnId);
+  }
+
   /** End the active session and start a fresh one; history stays, a divider marks the boundary. */
   async newSession(conversationId: string): Promise<Session> {
     const conv = this.requireConversation(conversationId);

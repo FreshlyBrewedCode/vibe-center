@@ -186,6 +186,20 @@ export class AgentRuntime {
     await this.draining;
   }
 
+  /**
+   * Cancel one turn and leave the others alone: the running one gets `session/cancel`, a queued
+   * one is dropped. Used for voice barge-in, which must not stop a text turn it didn't start.
+   */
+  cancelPrompt(turnId: string): void {
+    const i = this.queue.findIndex((q) => q.input.turnId === turnId);
+    if (i >= 0) {
+      const [q] = this.queue.splice(i, 1);
+      if (q) this.endQueued(q, "cancelled before it started");
+      return;
+    }
+    if (this.current?.turnId === turnId) this.cancelTurn(this.current, "user");
+  }
+
   /** End the current ACP session; the next prompt starts a fresh one under `sessionKey`. */
   async newSession(sessionKey: string): Promise<void> {
     await this.cancel();

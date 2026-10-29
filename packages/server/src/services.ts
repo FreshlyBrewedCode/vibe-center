@@ -10,12 +10,14 @@ import { HarnessService } from "./domain/harnesses.ts";
 import { PresenceStore } from "./domain/presence.ts";
 import { EventBus } from "./events/bus.ts";
 import { McpService } from "./mcp/service.ts";
+import { type VoiceOptions, VoiceService } from "./voice/service.ts";
 
 export interface ServicesOptions {
   dataDir: string;
   /** SEAM (phase 2a): the MCP provider for ACP sessions. Defaults to the app's MCP gateway. */
   mcp?: McpProvider;
   timeouts?: Partial<RuntimeTimeouts>;
+  voice?: VoiceOptions;
 }
 
 /** The app's domain services, wired together. HTTP, WS and the CLI only talk to these. */
@@ -33,6 +35,8 @@ export interface Services {
   /** The tailnet HTTPS URL `tailscale serve` published, if any. Set once up by the CLI. */
   publicUrl: string | null;
   setPublicUrl(url: string | null): void;
+  /** Voice calls: the worker, its bridge and the calls (phase 2b). */
+  voice: VoiceService;
   close(): Promise<void>;
 }
 
@@ -50,6 +54,7 @@ export function createServices(opts: ServicesOptions): Services {
   });
   const agents = new AgentService(repos, bus, presence, harnesses, chat);
   mcp.bind({ chat, presence });
+  const voice = new VoiceService({ repos, bus, chat, presence, dataDir: opts.dataDir }, opts.voice);
   const services: Services = {
     dataDir: opts.dataDir,
     repos,
@@ -63,8 +68,11 @@ export function createServices(opts: ServicesOptions): Services {
     publicUrl: null,
     setPublicUrl(url) {
       services.publicUrl = url;
+      voice.setPublicUrl(url);
     },
+    voice,
     async close() {
+      await voice.stop();
       await chat.dispose();
       await mcp.close();
       repos.db.close();

@@ -23,6 +23,7 @@ Options:
   --local              Don't publish on the tailnet; localhost only (start)
   --dev                Serve the web app from Vite with HMR (start)
   --no-probe           Don't probe harnesses on start (start)
+  --no-voice           Don't start the managed voice worker (start; calls need it)
 `;
 
 const WEB_DIR = join(import.meta.dir, "../../web");
@@ -38,6 +39,7 @@ async function main(): Promise<number> {
       local: { type: "boolean", default: false },
       dev: { type: "boolean", default: false },
       "no-probe": { type: "boolean", default: false },
+      "no-voice": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -94,6 +96,7 @@ async function main(): Promise<number> {
       port,
       webDist: values.dev ? null : WEB_DIST,
       probeOnStart: !values["no-probe"],
+      voice: { autostart: !values["no-voice"] },
     });
     cleanups.push(() => app.stop());
 

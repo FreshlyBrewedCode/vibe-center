@@ -205,6 +205,22 @@ describe("AgentRuntime against the fake ACP agent", () => {
     expect(c.status).toBe("complete");
   });
 
+  test("cancelPrompt cancels one turn and leaves the others", async () => {
+    const { rt } = makeRuntime();
+    const a = rt.prompt(textPrompt("a", "slow"));
+    const b = rt.prompt(textPrompt("b", "queued"));
+    const c = rt.prompt(textPrompt("c", "slow too"));
+    await Bun.sleep(300);
+    rt.cancelPrompt("b"); // queued: dropped
+    rt.cancelPrompt("a"); // running: session/cancel
+    expect((await a.done).status).toBe("cancelled");
+    expect((await b.done).status).toBe("cancelled");
+    await Bun.sleep(200);
+    rt.cancelPrompt("c");
+    expect((await c.done).status).toBe("cancelled");
+    expect((await rt.prompt(textPrompt("d", "after")).done).status).toBe("complete");
+  });
+
   test("newSession starts a fresh ACP session", async () => {
     const { rt, events, text } = makeRuntime();
     await rt.prompt(textPrompt("t1", "one")).done;
