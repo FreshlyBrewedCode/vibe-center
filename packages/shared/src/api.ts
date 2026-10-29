@@ -41,36 +41,56 @@ export const AuthExchangeBody = z.object({
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
-export const AgentBody = z.object({
+// Field schemas without defaults: the PATCH schemas are built from these, because `.partial()`
+// of a field with `.default()` would fill the default in and overwrite the stored value.
+const agentFields = {
   name: z.string().trim().min(1).max(80),
-  description: z.string().max(500).default(""),
+  description: z.string().max(500),
   avatar: z.object({ emoji: z.string().min(1).max(16), color: hexColor }),
-  systemPrompt: z.string().max(50_000).default(""),
+  systemPrompt: z.string().max(50_000),
   harnessId: z.string().min(1),
-  model: z.string().min(1).nullable().default(null),
-  options: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
+  model: z.string().min(1).nullable(),
+  options: z.record(z.string(), z.union([z.string(), z.boolean()])),
   cwd: z
     .string()
     .min(1)
     .refine((p) => p.startsWith("/") || p.startsWith("~"), "must be an absolute path"),
-  voice: z.string().nullable().default(null),
+  voice: z.string().nullable(),
+};
+
+export const AgentBody = z.object({
+  ...agentFields,
+  description: agentFields.description.default(""),
+  systemPrompt: agentFields.systemPrompt.default(""),
+  model: agentFields.model.default(null),
+  options: agentFields.options.default({}),
+  voice: agentFields.voice.default(null),
 });
 export type AgentBody = z.input<typeof AgentBody>;
-export const AgentPatchBody = AgentBody.partial();
+/** AgentBody after validation (defaults applied). */
+export type AgentInput = z.output<typeof AgentBody>;
+export const AgentPatchBody = z.object(agentFields).partial();
 export type AgentPatchBody = z.input<typeof AgentPatchBody>;
 
 export const SendMessageBody = z.object({ text: z.string().trim().min(1).max(100_000) });
 export const ReadBody = z.object({ seq: z.number().int().nonnegative() });
 export const PermissionBody = z.object({ optionId: z.string().min(1) });
 
-export const HarnessBody = z.object({
+const harnessFields = {
   name: z.string().trim().min(1).max(80),
-  command: z.string().default(""),
-  args: z.array(z.string()).default([]),
-  env: z.record(z.string(), z.string()).default({}),
+  command: z.string(),
+  args: z.array(z.string()),
+  env: z.record(z.string(), z.string()),
+};
+export const HarnessBody = z.object({
+  ...harnessFields,
+  command: harnessFields.command.default(""),
+  args: harnessFields.args.default([]),
+  env: harnessFields.env.default({}),
 });
 export type HarnessBody = z.input<typeof HarnessBody>;
-export const HarnessPatchBody = HarnessBody.partial();
+export type HarnessInput = z.output<typeof HarnessBody>;
+export const HarnessPatchBody = z.object(harnessFields).partial();
 export type HarnessPatchBody = z.input<typeof HarnessPatchBody>;
 
 export const MessagesQuery = z.object({
