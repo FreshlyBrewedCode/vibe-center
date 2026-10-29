@@ -12,7 +12,10 @@ import {
   type ConversationResponse,
   type DevicesResponse,
   type Harness,
+  type HarnessBody,
   type HarnessesResponse,
+  type HarnessPatchBody,
+  type InfoResponse,
   type McpServerBody,
   type McpServerPatchBody,
   type McpServersResponse,
@@ -22,6 +25,7 @@ import {
   type MemoryBody,
   type MemoryPatchBody,
   type MeResponse,
+  type MessageSearchHit,
   type MessagesResponse,
   mcpPaths,
   paths,
@@ -47,6 +51,7 @@ export const keys = {
   devices: ["devices"] as const,
   conversation: (id: string) => ["conversation", id] as const,
   messages: (conversationId: string) => ["messages", conversationId] as const,
+  info: ["info"] as const,
   mcpServers: ["mcp-servers"] as const,
   agentTools: (agentId: string) => ["agent-tools", agentId] as const,
   /** `scope`: an agent id, "shared", or "" for all. */
@@ -92,6 +97,50 @@ export const useMessages = (conversationId: string) =>
     queryKey: keys.messages(conversationId),
     queryFn: () => api.get<MessagesResponse>(paths.messages(conversationId)),
   });
+
+export const useInfo = () =>
+  useQuery({ queryKey: keys.info, queryFn: () => api.get<InfoResponse>(paths.info) });
+
+/** Fetches the page before the oldest loaded message and prepends it (for infinite scroll). */
+export function useLoadOlderMessages(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (before: number) =>
+      api.get<MessagesResponse>(`${paths.messages(conversationId)}?before=${before}`),
+    onSuccess: (page) => {
+      qc.setQueryData<MessagesResponse>(keys.messages(conversationId), (cur) => {
+        if (!cur) return cur;
+        const seen = new Set(cur.messages.map((m) => m.id));
+        const older = page.messages.filter((m) => !seen.has(m.id));
+        return { messages: [...older, ...cur.messages], hasMore: page.hasMore };
+      });
+    },
+  });
+}
+
+/** Ensures the page containing `seq` is loaded, for ⌘K's jump-to-message. */
+export async function ensureMessageLoaded(
+  qc: QueryClient,
+  conversationId: string,
+  seq: number,
+): Promise<void> {
+  const key = keys.messages(conversationId);
+  const cur = qc.getQueryData<MessagesResponse>(key);
+  if (cur?.messages.some((m) => m.seq === seq)) return;
+  const page = await api.get<MessagesResponse>(`${paths.messages(conversationId)}?before=${seq + 1}`);
+  qc.setQueryData<MessagesResponse>(key, (c) => {
+    if (!c) return { messages: page.messages, hasMore: page.hasMore };
+    const seen = new Set(c.messages.map((m) => m.id));
+    const older = page.messages.filter((m) => !seen.has(m.id));
+    return { messages: [...older, ...c.messages], hasMore: page.hasMore };
+  });
+}
+
+export async function searchMessages(q: string, agentId?: string): Promise<MessageSearchHit[]> {
+  const params = new URLSearchParams({ q });
+  if (agentId) params.set("agentId", agentId);
+  return api.get(`${paths.search}?${params}`);
+}
 
 // ---- mutations ----------------------------------------------------------------------------------
 
@@ -143,6 +192,30 @@ export const useProbeHarness = () =>
     mutationFn: (v: { id: string; deep?: boolean }) =>
       api.post<Harness>(`${paths.harnessProbe(v.id)}${v.deep ? "?deep=1" : ""}`),
   });
+
+function upsertHarness(qc: QueryClient, harness: Harness) {
+  qc.setQueryData<HarnessesResponse>(keys.harnesses, (list) =>
+    list ? [...list.filter((h) => h.id !== harness.id), harness] : list,
+  );
+}
+
+export function useSaveHarness(id?: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: HarnessBody | HarnessPatchBody) =>
+      id ? api.patch<Harness>(paths.harness(id), body) : api.post<Harness>(paths.harnesses, body),
+    onSuccess: (h) => upsertHarness(qc, h),
+  });
+}
+
+export function useDeleteHarness() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(paths.harness(id)),
+    onSuccess: (_, id) =>
+      qc.setQueryData<HarnessesResponse>(keys.harnesses, (l) => l?.filter((h) => h.id !== id)),
+  });
+}
 
 export function useRevokeDevice() {
   const qc = useQueryClient();
