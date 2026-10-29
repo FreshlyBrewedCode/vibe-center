@@ -303,8 +303,10 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 
 ## Known gaps
 
-- No message pagination UI, no code highlighting, no ⌘K/search UI, no notifications, no custom
-  harness form (API only), no MCP or voice (by design).
+- No voice (2b, not yet built). MCP shipped in 2a. Everything else that was a phase-1 UI gap
+  shipped in 2c: message pagination UI, code highlighting, ⌘K switcher/search with
+  jump-to-message, browser notifications, custom harness CRUD form, a template picker, a
+  details panel, mobile layout.
 - Unread counts every agent text/permission/error message, including replies you watched
   stream in while the DM was open; the DM marks them read as they arrive, so other devices
   briefly show a badge.

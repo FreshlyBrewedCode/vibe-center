@@ -9,9 +9,8 @@ import { Button } from "./ui/button";
 
 /**
  * The on-demand details panel for a DM: agent info, current session, model/harness, quick
- * actions. Phases 2a/2b add their own sections below (a "Tools" section listing the agent's
- * enabled MCP tools, a "Voice" section for the call voice picker) — append a `<Section>` each,
- * keyed by agent.id so it resets when the agent changes.
+ * actions. 2b adds its own section below (a "Voice" section for the call voice picker) — append
+ * a `<Section>`, keyed by agent.id so it resets when the agent changes.
  */
 export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: () => void }) {
   const conversation = useConversation(agent.conversationId);
@@ -62,7 +61,6 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
           )}
         </Section>
 
-        {/* SEAM (2a): a "Tools" Section listing enabled MCP tools goes here. */}
         {/* SEAM (2b): a "Voice" Section with the call voice picker goes here. */}
 
         <Section title="Quick actions">

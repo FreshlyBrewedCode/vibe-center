@@ -35,9 +35,9 @@ const blank: AgentBody = {
 
 /**
  * Create or edit an agent. Models and other options come from the harness's cached probe.
- * Sections: Profile, Behaviour, Harness & model. 2a and 2b add their own sections below Harness
- * & model (a "Tools" section for MCP tool enablement, a "Voice" section for the call voice
- * picker) — each keeps its own state/save path, so adding one is additive here.
+ * Sections: Profile, Behaviour, Harness & model. (Tool enablement lives in its own
+ * `<AgentTools>` block below the form, in the edit route, since it has its own save path.) 2b
+ * adds a "Voice" section below Harness & model for the call voice picker.
  */
 export function AgentForm({ agent, template }: { agent?: AgentView; template?: AgentTemplate }) {
   const navigate = useNavigate();
@@ -175,7 +175,6 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
         </Field>
       </FormSection>
 
-      {/* SEAM (2a): a "Tools" FormSection (MCP server tool toggles, grouped by server) goes here. */}
       {/* SEAM (2b): a "Voice" FormSection (TTS voice picker for calls) goes here. */}
 
       <div className="flex gap-2">
