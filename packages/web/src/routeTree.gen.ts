@@ -18,6 +18,7 @@ import { Route as AppAgentsNewRouteImport } from './routes/_app/agents/new'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app/settings/appearance'
 import { Route as AppSettingsDevicesRouteImport } from './routes/_app/settings/devices'
+import { Route as AppSettingsGeneralRouteImport } from './routes/_app/settings/general'
 import { Route as AppSettingsHarnessesRouteImport } from './routes/_app/settings/harnesses'
 import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings/mcp'
 import { Route as AppAgentsAgentIdIndexRouteImport } from './routes/_app/agents/$agentId/index'
@@ -67,6 +68,11 @@ const AppSettingsDevicesRoute = AppSettingsDevicesRouteImport.update({
   path: '/devices',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsGeneralRoute = AppSettingsGeneralRouteImport.update({
+  id: '/general',
+  path: '/general',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsHarnessesRoute = AppSettingsHarnessesRouteImport.update({
   id: '/harnesses',
   path: '/harnesses',
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/agents/new': typeof AppAgentsNewRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/devices': typeof AppSettingsDevicesRoute
+  '/settings/general': typeof AppSettingsGeneralRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/': typeof AppSettingsIndexRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/agents/new': typeof AppAgentsNewRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/devices': typeof AppSettingsDevicesRoute
+  '/settings/general': typeof AppSettingsGeneralRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/_app/agents/new': typeof AppAgentsNewRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/devices': typeof AppSettingsDevicesRoute
+  '/_app/settings/general': typeof AppSettingsGeneralRoute
   '/_app/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/agents/new'
     | '/settings/appearance'
     | '/settings/devices'
+    | '/settings/general'
     | '/settings/harnesses'
     | '/settings/mcp'
     | '/settings/'
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
     | '/agents/new'
     | '/settings/appearance'
     | '/settings/devices'
+    | '/settings/general'
     | '/settings/harnesses'
     | '/settings/mcp'
     | '/settings'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/_app/agents/new'
     | '/_app/settings/appearance'
     | '/_app/settings/devices'
+    | '/_app/settings/general'
     | '/_app/settings/harnesses'
     | '/_app/settings/mcp'
     | '/_app/settings/'
@@ -246,6 +258,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsDevicesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/general': {
+      id: '/_app/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof AppSettingsGeneralRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/harnesses': {
       id: '/_app/settings/harnesses'
       path: '/harnesses'
@@ -280,6 +299,7 @@ declare module '@tanstack/react-router' {
 interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsDevicesRoute: typeof AppSettingsDevicesRoute
+  AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
   AppSettingsHarnessesRoute: typeof AppSettingsHarnessesRoute
   AppSettingsMcpRoute: typeof AppSettingsMcpRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
@@ -288,6 +308,7 @@ interface AppSettingsRouteChildren {
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsDevicesRoute: AppSettingsDevicesRoute,
+  AppSettingsGeneralRoute: AppSettingsGeneralRoute,
   AppSettingsHarnessesRoute: AppSettingsHarnessesRoute,
   AppSettingsMcpRoute: AppSettingsMcpRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
