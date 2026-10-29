@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useHarnesses, useProbeHarness, useSaveAgent } from "@/lib/queries";
 import type { AgentTemplate } from "./agent-templates";
 import { HealthBadge } from "./health-badge";
+import { VoicePicker } from "./voice/voice-picker";
 
 const DEFAULT = "__default__";
 
@@ -66,6 +67,7 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
       model: form.model,
       options: form.options,
       cwd: form.cwd,
+      voice: form.voice ?? null,
     };
     save.mutate(body, {
       onSuccess: (a) => navigate({ to: "/agents/$agentId", params: { agentId: a.id } }),
@@ -175,7 +177,13 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
         </Field>
       </FormSection>
 
-      {/* SEAM (2b): a "Voice" FormSection (TTS voice picker for calls) goes here. */}
+      <FormSection title="Voice">
+        <div>
+          <Label className="mb-1.5 block">Voice</Label>
+          <VoicePicker value={form.voice ?? null} onChange={(voice) => set({ voice })} />
+          <p className="mt-1 text-muted-foreground text-xs">How the agent sounds on calls.</p>
+        </div>
+      </FormSection>
 
       <div className="flex gap-2">
         <Button type="submit" disabled={save.isPending}>

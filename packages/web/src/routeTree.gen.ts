@@ -21,6 +21,7 @@ import { Route as AppSettingsDevicesRouteImport } from './routes/_app/settings/d
 import { Route as AppSettingsGeneralRouteImport } from './routes/_app/settings/general'
 import { Route as AppSettingsHarnessesRouteImport } from './routes/_app/settings/harnesses'
 import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings/mcp'
+import { Route as AppSettingsVoiceRouteImport } from './routes/_app/settings/voice'
 import { Route as AppAgentsAgentIdIndexRouteImport } from './routes/_app/agents/$agentId/index'
 import { Route as AppAgentsAgentIdEditRouteImport } from './routes/_app/agents/$agentId/edit'
 
@@ -83,6 +84,11 @@ const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
   path: '/mcp',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsVoiceRoute = AppSettingsVoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppAgentsAgentIdIndexRoute = AppAgentsAgentIdIndexRouteImport.update({
   id: '/agents/$agentId/',
   path: '/agents/$agentId/',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/settings/general': typeof AppSettingsGeneralRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
+  '/settings/voice': typeof AppSettingsVoiceRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
@@ -119,6 +126,7 @@ export interface FileRoutesByTo {
   '/settings/general': typeof AppSettingsGeneralRoute
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
+  '/settings/voice': typeof AppSettingsVoiceRoute
   '/settings': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId': typeof AppAgentsAgentIdIndexRoute
@@ -136,6 +144,7 @@ export interface FileRoutesById {
   '/_app/settings/general': typeof AppSettingsGeneralRoute
   '/_app/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/_app/settings/mcp': typeof AppSettingsMcpRoute
+  '/_app/settings/voice': typeof AppSettingsVoiceRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/_app/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
@@ -153,6 +162,7 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/harnesses'
     | '/settings/mcp'
+    | '/settings/voice'
     | '/settings/'
     | '/agents/$agentId/edit'
     | '/agents/$agentId/'
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/harnesses'
     | '/settings/mcp'
+    | '/settings/voice'
     | '/settings'
     | '/agents/$agentId/edit'
     | '/agents/$agentId'
@@ -183,6 +194,7 @@ export interface FileRouteTypes {
     | '/_app/settings/general'
     | '/_app/settings/harnesses'
     | '/_app/settings/mcp'
+    | '/_app/settings/voice'
     | '/_app/settings/'
     | '/_app/agents/$agentId/edit'
     | '/_app/agents/$agentId/'
@@ -279,6 +291,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsMcpRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/voice': {
+      id: '/_app/settings/voice'
+      path: '/voice'
+      fullPath: '/settings/voice'
+      preLoaderRoute: typeof AppSettingsVoiceRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/agents/$agentId/': {
       id: '/_app/agents/$agentId/'
       path: '/agents/$agentId'
@@ -302,6 +321,7 @@ interface AppSettingsRouteChildren {
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute
   AppSettingsHarnessesRoute: typeof AppSettingsHarnessesRoute
   AppSettingsMcpRoute: typeof AppSettingsMcpRoute
+  AppSettingsVoiceRoute: typeof AppSettingsVoiceRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -311,6 +331,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,
   AppSettingsHarnessesRoute: AppSettingsHarnessesRoute,
   AppSettingsMcpRoute: AppSettingsMcpRoute,
+  AppSettingsVoiceRoute: AppSettingsVoiceRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

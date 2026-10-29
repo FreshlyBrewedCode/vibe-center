@@ -8,6 +8,7 @@ import { Composer } from "@/components/dm/composer";
 import { MessageList } from "@/components/dm/message-list";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CallBar, CallButton } from "@/components/voice/call";
 import {
   ensureMessageLoaded,
   queryClient,
@@ -80,7 +81,7 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
               {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
             </div>
           </div>
-          {/* SEAM (2b): the call button mounts here, next to the other header actions. */}
+          <CallButton agent={agent} />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -109,6 +110,7 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
             <Info className="size-4" />
           </Button>
         </header>
+        <CallBar agent={agent} />
         {messages.isError ? (
           <p className="flex-1 p-6 text-destructive text-sm">{messages.error.message}</p>
         ) : (

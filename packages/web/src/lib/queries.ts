@@ -9,8 +9,10 @@ import {
   type AgentToolsPatchBody,
   type AgentToolsResponse,
   type AgentView,
+  type CallsResponse,
   type ConversationResponse,
   type DevicesResponse,
+  type GpuSpeechAction,
   type Harness,
   type HarnessBody,
   type HarnessesResponse,
@@ -30,6 +32,11 @@ import {
   mcpPaths,
   paths,
   type SendMessageResponse,
+  type VoiceSettings,
+  type VoiceSettingsPatchBody,
+  type VoiceStatus,
+  type VoicesResponse,
+  voicePaths,
 } from "@vibe-center/shared";
 import { ApiError, api } from "./api";
 
@@ -56,6 +63,10 @@ export const keys = {
   agentTools: (agentId: string) => ["agent-tools", agentId] as const,
   /** `scope`: an agent id, "shared", or "" for all. */
   memories: (scope: string, q: string) => ["memories", scope, q] as const,
+  voiceSettings: ["voice", "settings"] as const,
+  voiceStatus: ["voice", "status"] as const,
+  voices: ["voice", "voices"] as const,
+  calls: ["voice", "calls"] as const,
 };
 
 /** The signed-in device, or null when signed out (401). */
@@ -310,3 +321,57 @@ export function useDeleteMemory() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["memories"] }),
   });
 }
+
+// ---- voice (phase 2b) ---------------------------------------------------------------------------
+
+export const useVoiceSettings = () =>
+  useQuery({ queryKey: keys.voiceSettings, queryFn: () => api.get<VoiceSettings>(voicePaths.settings) });
+
+export function useSaveVoiceSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: VoiceSettingsPatchBody) => api.patch<VoiceSettings>(voicePaths.settings, patch),
+    onSuccess: (s) => {
+      qc.setQueryData(keys.voiceSettings, s);
+      void qc.invalidateQueries({ queryKey: keys.voices });
+    },
+  });
+}
+
+/** Worker/STT/TTS health. `voice.status` events keep it fresh; `poll` also refreshes the log tail. */
+export const useVoiceStatus = (opts: { poll?: boolean } = {}) =>
+  useQuery({
+    queryKey: keys.voiceStatus,
+    queryFn: () => api.get<VoiceStatus>(voicePaths.status),
+    refetchInterval: opts.poll ? 5000 : false,
+  });
+
+export function useRestartVoiceWorker() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<VoiceStatus>(voicePaths.workerRestart),
+    onSuccess: (s) => qc.setQueryData(keys.voiceStatus, s),
+  });
+}
+
+export function useGpuSpeech() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (action: GpuSpeechAction) => api.post<VoiceStatus>(voicePaths.gpuSpeech(action)),
+    onSuccess: (s) => qc.setQueryData(keys.voiceStatus, s),
+  });
+}
+
+/** TTS voices for the agent's voice picker (from the TTS server, or the worker's CPU Kokoro). */
+export const useVoices = (enabled = true) =>
+  useQuery({
+    queryKey: keys.voices,
+    queryFn: () => api.get<VoicesResponse>(voicePaths.voices),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+/** Active calls (all devices). `call.upsert` events keep the list current. */
+export const useCalls = () =>
+  useQuery({ queryKey: keys.calls, queryFn: () => api.get<CallsResponse>(voicePaths.calls) });

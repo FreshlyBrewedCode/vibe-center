@@ -6,6 +6,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type {
   AgentsResponse,
+  CallsResponse,
   HarnessesResponse,
   McpServersResponse,
   Message,
@@ -183,6 +184,15 @@ export function applyEvent(qc: QueryClient, e: ServerEvent, myDeviceId: string):
     case "memory.upsert":
     case "memory.deleted":
       void qc.invalidateQueries({ queryKey: ["memories"] });
+      return;
+    case "call.upsert":
+      qc.setQueryData<CallsResponse>(keys.calls, (list) => {
+        const rest = (list ?? []).filter((c) => c.id !== e.call.id);
+        return e.call.state === "ended" ? rest : [...rest, e.call];
+      });
+      return;
+    case "voice.status":
+      qc.setQueryData(keys.voiceStatus, e.status);
       return;
     case "device.revoked":
       if (e.deviceId === myDeviceId) qc.setQueryData(keys.me, null);

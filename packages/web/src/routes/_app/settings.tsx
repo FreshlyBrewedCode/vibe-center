@@ -8,6 +8,7 @@ const SECTIONS = [
   { to: "/settings/general", label: "General" },
   { to: "/settings/harnesses", label: "Harnesses" },
   { to: "/settings/mcp", label: "MCP servers" },
+  { to: "/settings/voice", label: "Voice" },
   { to: "/settings/devices", label: "Devices" },
   { to: "/settings/appearance", label: "Appearance" },
 ] as const;
