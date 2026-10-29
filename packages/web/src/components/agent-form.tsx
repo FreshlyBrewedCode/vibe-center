@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useHarnesses, useProbeHarness, useSaveAgent } from "@/lib/queries";
+import type { AgentTemplate } from "./agent-templates";
 import { HealthBadge } from "./health-badge";
 
 const DEFAULT = "__default__";
@@ -32,13 +33,20 @@ const blank: AgentBody = {
   cwd: "~",
 };
 
-/** Create or edit an agent. Models and other options come from the harness's cached probe. */
-export function AgentForm({ agent }: { agent?: AgentView }) {
+/**
+ * Create or edit an agent. Models and other options come from the harness's cached probe.
+ * Sections: Profile, Behaviour, Harness & model. 2a and 2b add their own sections below Harness
+ * & model (a "Tools" section for MCP tool enablement, a "Voice" section for the call voice
+ * picker) — each keeps its own state/save path, so adding one is additive here.
+ */
+export function AgentForm({ agent, template }: { agent?: AgentView; template?: AgentTemplate }) {
   const navigate = useNavigate();
   const harnesses = useHarnesses();
   const save = useSaveAgent(agent?.id);
   const probe = useProbeHarness();
-  const [form, setForm] = useState<AgentBody>(agent ?? blank);
+  const [form, setForm] = useState<AgentBody>(
+    agent ?? (template ? { ...blank, ...template.defaults } : blank),
+  );
   const set = (patch: Partial<AgentBody>) => setForm((f) => ({ ...f, ...patch }));
 
   const harness = harnesses.data?.find((h) => h.id === form.harnessId);
@@ -66,96 +74,110 @@ export function AgentForm({ agent }: { agent?: AgentView }) {
   };
 
   return (
-    <form onSubmit={submit} className="mx-auto w-full max-w-2xl space-y-5 p-6">
+    <form onSubmit={submit} className="mx-auto w-full max-w-2xl space-y-8 p-6">
       <h1 className="font-semibold text-xl">{agent ? `Edit ${agent.name}` : "New agent"}</h1>
-      <div className="flex gap-3">
-        <Field label="Emoji" className="w-20">
-          <Input
-            value={form.avatar.emoji}
-            maxLength={16}
-            onChange={(e) => set({ avatar: { ...form.avatar, emoji: e.target.value } })}
-          />
-        </Field>
-        <Field label="Color" className="w-20">
-          <Input
-            type="color"
-            value={form.avatar.color}
-            className="p-1"
-            onChange={(e) => set({ avatar: { ...form.avatar, color: e.target.value } })}
-          />
-        </Field>
-        <Field label="Name" className="flex-1">
-          <Input required value={form.name} onChange={(e) => set({ name: e.target.value })} />
-        </Field>
-      </div>
-      <Field label="Description">
-        <Input value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
-      </Field>
-      <Field label="System prompt" hint="Appended to the harness's own prompt where the harness allows it.">
-        <Textarea
-          rows={6}
-          value={form.systemPrompt ?? ""}
-          onChange={(e) => set({ systemPrompt: e.target.value })}
-        />
-      </Field>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Harness">
-          <Select
-            value={form.harnessId}
-            onValueChange={(v) => set({ harnessId: v, model: null, options: {} })}
-          >
-            <SelectTrigger aria-label="Harness" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {harnesses.data?.map((h) => (
-                <SelectItem key={h.id} value={h.id}>
-                  {h.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {harness && (
-            <HarnessStatusLine
-              harness={harness}
-              onProbe={() => probe.mutate({ id: harness.id })}
-              probing={probe.isPending}
-            />
-          )}
-        </Field>
-        <Field label="Model">
-          {modelOption?.type === "select" ? (
-            <OptionSelect
-              option={modelOption}
-              value={form.model ?? null}
-              onChange={(v) => set({ model: v })}
-              label="Model"
-            />
-          ) : (
+
+      <FormSection title="Profile">
+        <div className="flex gap-3">
+          <Field label="Emoji" className="w-20">
             <Input
-              placeholder="Harness default"
-              value={form.model ?? ""}
-              onChange={(e) => set({ model: e.target.value.trim() || null })}
+              value={form.avatar.emoji}
+              maxLength={16}
+              onChange={(e) => set({ avatar: { ...form.avatar, emoji: e.target.value } })}
             />
-          )}
-        </Field>
-      </div>
-      {otherOptions.length > 0 && (
-        <div className="grid gap-5 sm:grid-cols-2">
-          {otherOptions.map((o) => (
-            <Field key={o.id} label={o.name} hint={o.description ?? undefined}>
-              <ConfigOptionInput
-                option={o}
-                values={form.options ?? {}}
-                onChange={(options) => set({ options })}
-              />
-            </Field>
-          ))}
+          </Field>
+          <Field label="Color" className="w-20">
+            <Input
+              type="color"
+              value={form.avatar.color}
+              className="p-1"
+              onChange={(e) => set({ avatar: { ...form.avatar, color: e.target.value } })}
+            />
+          </Field>
+          <Field label="Name" className="flex-1">
+            <Input required value={form.name} onChange={(e) => set({ name: e.target.value })} />
+          </Field>
         </div>
-      )}
-      <Field label="Working directory" hint="Absolute path on the server; ~ is your home directory.">
-        <Input required value={form.cwd} onChange={(e) => set({ cwd: e.target.value })} />
-      </Field>
+        <Field label="Description">
+          <Input value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Behaviour">
+        <Field label="System prompt" hint="Appended to the harness's own prompt where the harness allows it.">
+          <Textarea
+            rows={8}
+            className="font-mono text-sm"
+            value={form.systemPrompt ?? ""}
+            onChange={(e) => set({ systemPrompt: e.target.value })}
+          />
+        </Field>
+      </FormSection>
+
+      <FormSection title="Harness and model">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="Harness">
+            <Select
+              value={form.harnessId}
+              onValueChange={(v) => set({ harnessId: v, model: null, options: {} })}
+            >
+              <SelectTrigger aria-label="Harness" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {harnesses.data?.map((h) => (
+                  <SelectItem key={h.id} value={h.id}>
+                    {h.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {harness && (
+              <HarnessStatusLine
+                harness={harness}
+                onProbe={() => probe.mutate({ id: harness.id })}
+                probing={probe.isPending}
+              />
+            )}
+          </Field>
+          <Field label="Model">
+            {modelOption?.type === "select" ? (
+              <OptionSelect
+                option={modelOption}
+                value={form.model ?? null}
+                onChange={(v) => set({ model: v })}
+                label="Model"
+              />
+            ) : (
+              <Input
+                placeholder="Harness default"
+                value={form.model ?? ""}
+                onChange={(e) => set({ model: e.target.value.trim() || null })}
+              />
+            )}
+          </Field>
+        </div>
+        {otherOptions.length > 0 && (
+          <div className="grid gap-5 sm:grid-cols-2">
+            {otherOptions.map((o) => (
+              <Field key={o.id} label={o.name} hint={o.description ?? undefined}>
+                <ConfigOptionInput
+                  option={o}
+                  values={form.options ?? {}}
+                  onChange={(options) => set({ options })}
+                />
+              </Field>
+            ))}
+          </div>
+        )}
+        <Field label="Working directory" hint="Absolute path on the server; ~ is your home directory.">
+          <Input required value={form.cwd} onChange={(e) => set({ cwd: e.target.value })} />
+        </Field>
+      </FormSection>
+
+      {/* SEAM (2a): a "Tools" FormSection (MCP server tool toggles, grouped by server) goes here. */}
+      {/* SEAM (2b): a "Voice" FormSection (TTS voice picker for calls) goes here. */}
+
       <div className="flex gap-2">
         <Button type="submit" disabled={save.isPending}>
           {agent ? "Save" : "Create agent"}
@@ -165,6 +187,15 @@ export function AgentForm({ agent }: { agent?: AgentView }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-4">
+      <h2 className="border-b pb-1.5 font-medium text-sm">{title}</h2>
+      {children}
+    </section>
   );
 }
 
