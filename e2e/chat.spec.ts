@@ -1,21 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-
-const ROOT = join(import.meta.dirname, "..");
-const FAKE_AGENT = join(ROOT, "packages/server/test/fake-agent.ts");
-const dataDir = process.env.VC_E2E_DATA_DIR!;
-
-/** `vibe-center link` against the running test server; returns the localhost sign-in link. */
-function mintLink(): string {
-  const out = execFileSync("bun", ["packages/server/src/cli.ts", "link", "--data-dir", dataDir], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
-  const m = /(http:\/\/localhost:\d+\/login#token=\S+)/.exec(out);
-  if (!m?.[1]) throw new Error(`no link in output:\n${out}`);
-  return m[1];
-}
+import { dataDir, FAKE_AGENT, mintLink } from "./helpers";
 
 test("sign in, create an agent, chat with streaming, stop, permissions, new session", async ({ page }) => {
   // Without a session the app shows the signed-out screen.
@@ -40,8 +24,9 @@ test("sign in, create an agent, chat with streaming, stop, permissions, new sess
   ).json();
   expect((await page.request.post(`/api/harnesses/${harness.id}/probe`)).ok()).toBe(true);
 
-  // Create an agent through the form.
+  // Create an agent through the template picker and the form.
   await page.getByRole("link", { name: "New agent" }).first().click();
+  await page.getByTestId("template-blank").click();
   await page.getByLabel("Name").fill("Echo");
   await page.getByLabel("System prompt").fill("You are Echo.");
   await page.getByRole("combobox", { name: "Harness" }).click();
@@ -93,9 +78,10 @@ test("sign in, create an agent, chat with streaming, stop, permissions, new sess
   await expect(page.getByTestId("message-agent").first()).toContainText("SYSTEM=[You are Echo.]");
   await page.screenshot({ path: "test-results/dm.png" });
 
-  // Settings: harness health (the fake one was probed) and this device.
+  // Settings: General by default, harness health (the fake one was probed) and this device.
   await page.getByRole("link", { name: "Settings" }).click();
-  await expect(page).toHaveURL(/\/settings\/harnesses$/);
+  await expect(page).toHaveURL(/\/settings\/general$/);
+  await page.getByRole("link", { name: "Harnesses" }).click();
   await expect(page.getByTestId(`harness-${harness.id}`).getByTestId("health")).toHaveText("Working");
   await page.getByRole("link", { name: "Devices" }).click();
   await expect(page.getByText("(this device)")).toBeVisible();
