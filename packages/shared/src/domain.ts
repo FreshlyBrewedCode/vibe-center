@@ -255,7 +255,7 @@ export type Message = MessageBase &
     /** Speech-to-text of the user, or the agent's spoken reply, from a call (phase 2b). */
     | { kind: "voice_transcript"; data: TurnMeta | null }
     | { kind: "session"; data: SessionMarkerData }
-    | { kind: "error"; data: { stopReason?: string | null } | null }
+    | { kind: "error"; data: { stopReason?: string | null; hint?: string | null } | null }
   );
 
 export type MessageKind = Message["kind"];
