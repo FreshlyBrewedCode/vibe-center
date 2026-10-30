@@ -101,3 +101,105 @@ Medium: three sentences, 34 words.
 
 Startup from a running km-pc: ~18 s until both `/health` answer (Kokoro ~9 s, Parakeet ~3.5 s,
 plus the nix shell and warm-up). From a sleeping km-pc: ~40 s.
+
+## STT accuracy and the model catalog (2026-10-30)
+
+After real calls showed accuracy problems, I measured where they came from before comparing
+models. Same km-pc (RTX 3070, driver 595 / CUDA 13.2, onnxruntime-gpu 1.31.1, faster-whisper
+1.2 / ctranslate2 4.8 on CUDA 12, onnx-asr 0.12.0); nobody at the PC.
+
+**Evaluation set** (`services/voice/eval`): 36 things people say to a coding agent ("Open a PR
+for the auth refactor", "Ask Ben to rebase onto main", "There's a bug on line one hundred and
+twelve", agent and project names: Jeff, Ben, Karl, Nova, Vibe Center, Pipecat, Tailscale, …),
+290 words, 17 mid-sentence pauses of 0.35–0.9 s. Ten Kokoro voices (US/UK, female/male) at
+speed 0.9–1.15, in three conditions: **clean** (-23 dBFS), **noisy** (pink noise at 15 dB SNR
+plus babble of other utterances at 18 dB), **phone** (300–3400 Hz, -38 dBFS, brown noise at
+20 dB). Each clip runs through Pipecat's Silero VAD in 20 ms frames, as in a call, and is
+transcribed the old way (**segments**: each VAD segment alone) and the new way (**turn**: the
+whole turn). WER after normalising case, punctuation and numbers ("PR42" = "PR forty two").
+870 words in all, so 0.1 % is one word.
+
+### Root causes
+
+1. **The pipeline cut turns into fragments** (the main one). Pipecat's `SegmentedSTTService`
+   sends each VAD segment to the STT on its own: every pause over the VAD's 0.2 s stop starts a
+   new segment, transcribed without the words around it, and between segments it keeps only the
+   last second of audio, so speech the VAD doesn't flag (soft or short words) is dropped. The
+   user's own call log showed it: one request (about the weather this weekend, judging by the
+   next turns) came out as three, "Can you trick the" + "For this weekend in" + "Um", with
+   "weather" gone. Fix in the
+   voice worker (`turns.py`): the STT gets the whole turn (first speech to now, pauses
+   included) at every VAD stop, and the new transcript replaces the old.
+2. **The STT server told Parakeet the padded length.** It pads every utterance to 16 s (one
+   input shape for onnxruntime's CUDA kernels, see above) and passed that as the audio length,
+   so the per-feature normalisation averaged over mostly silence and the decoder ran over all
+   of it. Now the real length goes in with the padded audio: same shape and speed, same
+   transcripts as unpadded.
+
+Parakeet v2 fp16 on the GPU, in-process (`bench/stt_eval.py`), WER %:
+
+| configuration | clean | noisy | phone | all | median |
+|---|---:|---:|---:|---:|---:|
+| **before**: segments, padded length (as served until now) | 5.9 | 15.2 | 10.0 | **10.3** | 46 ms |
+| whole turn, padded length | 2.1 | 13.1 | 4.1 | 6.4 | 46 ms |
+| **after**: whole turn, real length | 0.7 | 3.8 | 4.5 | **3.0** | 33 ms |
+| whole turn, unpadded (reference) | 0.7 | 3.8 | 4.5 | 3.0 | 166 ms (new shape each time) |
+| whole turn, fp32, real length | 0.7 | 3.8 | 4.1 | 2.9 | 41 ms (3.0 GB VRAM) |
+
+The same fix on every model, as served (segments → turn, all conditions): Parakeet v2 11.1 →
+3.0 %, Whisper turbo 11.6 → 3.6 %, Canary 13.7 → 3.7 %, the worker's CPU Whisper base.en 15.2 →
+7.1 %. Noise suffers most from fragments (Parakeet v2: 25.2 → 3.8 %).
+
+**Measured and not a cause:**
+
+- fp16: 3.0 vs 2.9 % for fp32 (one word)
+- VAD loudness gate and pre-roll: `min_volume` 0.6/0.45/0.3 × pre-roll 1.0/1.5 s gave 2.9–3.1 %.
+  Pipecat's defaults stay (now `VAD_MIN_VOLUME`, `STT_PREROLL_S` in the worker)
+- the WebRTC path (Chromium fake mic with echo cancellation, noise suppression and AGC on → Opus
+  → aiortc → libswresample to 16 kHz), from the e2e call's debug recordings: all 5 turns
+  transcribed exactly; speech level within 0.5 dB of the source except the first turn (+6.6 dB,
+  AGC settling, 1 clipped sample); -1 to -4 dB above 3 kHz relative to 1–2 kHz; the speech
+  starts ~0.65 s into each recording, so the pre-roll covers the VAD's onset delay
+- phone-mic processing could not be measured here (no phone). The new "Keep recordings of
+  recent turns" setting keeps what the STT heard, to check real misrecognitions
+
+What's left: in the quiet band-limited "phone" condition the VAD misses some soft words
+("Sorry, stop." before "Just say goodbye.", a trailing "of the server file"), which no model can
+recover; and Parakeet spells unknown names by ear ("Carl", "PipeCat").
+
+### The models
+
+As served (HTTP through the tunnel; eval set in turn mode). Paced = 2 s between requests, the
+GPU clocking down as in a conversation (`bench/paced.py`, language `en` as the worker sends it).
+Vocabulary terms = how many of the 33 occurrences of the vocabulary names came out right.
+
+| model | clean | noisy | phone | **all** | with vocabulary | vocab terms | server, back-to-back | server, paced 1 / 2.5 / 8 s | VRAM | disk |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **Parakeet TDT 0.6B v2** (default) | 0.7 | 3.8 | 4.5 | **3.0** | n/a | 26 | 33 ms | 28 / 46 / 59 ms | 1.70 GB | 1.25 GB |
+| Parakeet TDT 0.6B v3 | 0.7 | 30.7 | 5.5 | 12.3 | n/a | 25 | 35 ms | 37 / 54 / 64 ms | 1.73 GB | 1.25 GB |
+| Whisper large-v3 turbo (int8_float16, greedy) | 1.7 | 3.1 | 5.9 | 3.6 | **2.9** | 26 → **31** | 160 ms | 169 / 179 / 210 ms | 1.23 GB | 1.55 GB + 2.6 GB runtime |
+| Canary 1B v2 (fp16 encoder) | 1.7 | 4.1 | 5.2 | 3.7 | n/a | 29 | 77 ms | 56 / 94 / 198 ms | 3.16 GB | 2.22 GB |
+| Distil-Whisper large-v3 (dropped) | 3.4 | 9.0 | 9.3 | 7.2 | 6.6 | 24 → 25 | 156 ms | 165 / 171 / 196 ms | 1.16 GB | 1.45 GB |
+
+- **Parakeet v2 stays the default**: the lowest WER without help, and 4–5x faster than Whisper,
+  which adds ~150 ms to every turn. Switch to **Whisper turbo** when names and jargon matter
+  (with the custom vocabulary as hotwords it got 31 of 33 terms and 2.9 % WER) or for another
+  language
+- **Parakeet v3** transcribes the quieter background talk in the babble ("Ask change for the
+  piece. Open a PR for the auth refactor.") and lost the speaker twice. Fine in a quiet room
+  for its 25 languages; Canary or Whisper otherwise
+- **Canary 1B v2** is as accurate as Whisper without the vocabulary and robust in noise, at
+  ~2x Parakeet's VRAM. It doesn't detect the language: Settings → Voice → language
+- **Distil-Whisper** added nothing over turbo (worse and English-only at the same speed), so
+  it isn't in the catalog
+- Whisper's language detection costs ~140 ms per request (paced 310 vs 170 ms): the worker
+  sends the language from Settings unless it is "Detect automatically"
+- `initial_prompt` instead of `hotwords` was not compared; `hotwords` is what the server uses
+- switching (`POST …/activate`) took 4–6 s with the old model serving meanwhile. Downloads over
+  plain HTTP ran at 6–9 MB/s (Parakeet ~5 min including the fp16 conversion)
+
+**The CPU fallback on dev** (6 cores, shared with the app): the worker's faster-whisper
+base.en int8 gets 4.1 / 6.2 / 11.0 → **7.1 %** in turn mode, and 2.8 / 5.5 / 8.3 → 5.5 % with
+the vocabulary as hotwords (20 → 32 of 33 terms), at ~525–560 ms per turn. Parakeet v2 int8 on onnx-asr CPU
+was 0.7 / 13.1 / 5.9 → 6.6 % at ~193 ms: faster, but weaker in noise and without vocabulary, so
+the fallback stays Whisper base.en.

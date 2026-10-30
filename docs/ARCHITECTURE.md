@@ -361,7 +361,10 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
 
 - **Worker** (`services/voice`, Python/Pipecat): transport, Silero VAD + Smart Turn v3, STT/TTS,
   fillers, barge-in, latency log. Its README documents its HTTP API and the bridge protocol.
-  It holds no agent and no conversation state; one call at a time.
+  It holds no agent and no conversation state; one call at a time. The STT hears each user turn
+  as a whole (`turns.py`): the audio from the turn's first speech to its end, pauses included,
+  re-transcribed at every VAD stop, the new transcript replacing the old. (Pipecat's segmented
+  STT transcribed each pause-separated piece alone; that was the main cause of poor accuracy.)
 - **Process** (`voice/worker.ts`, `ManagedWorker`): in managed mode the app spawns
   `services/voice/run.sh` at start (`--no-voice` skips it) in its own process group, on a free
   loopback port with a random token (`VC_WORKER_*` env), logs to `<data>/logs/voice-worker.log`
@@ -405,8 +408,20 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   during a call is spoken; the hop limit still sees the turn.
 - **Settings** (`settings` row `voice`, `voice/settings.ts`): worker mode/URL/token (the token is
   write-only), app URL for a remote worker, STT/TTS URLs (default the km-pc tunnels
-  `127.0.0.1:8401/8402`; empty = CPU only), filler. Per call, the worker uses a GPU server only if
-  its `/health` answers, and falls back to the CPU per request if it disappears.
+  `127.0.0.1:8401/8402`; empty = CPU only), filler, the STT language (`""` = detect), the custom
+  vocabulary and `recordTurns` (debug recordings, 0 = off). Per call the app sends the vocabulary
+  plus every agent's name, the language and `record_turns` to the worker. Per call, the worker uses
+  a GPU server only if its `/health` answers, and falls back to the CPU per request if it disappears.
+- **Speech-to-text models**: the STT server owns its models (`services/speech-gpu`: a catalog,
+  on-demand downloads, hot swap; see its README). The app proxies its catalog API
+  (`voice/stt-models.ts`: `GET /api/voice/stt/models`, `POST …/{id}/download|activate`,
+  `DELETE …/{id}/download` to cancel, `DELETE …/{id}`), so the server can run anywhere the app
+  reaches. There are no events for it: Settings polls (1 s while something downloads or loads).
+  An offline server, or a plain OpenAI-compatible one without the catalog, lists as
+  `reachable: false` with the reason.
+- **Debug recordings**: with `recordTurns > 0` the worker keeps the last N user turns as WAV +
+  transcript in `<data>/voice/recordings/`; `GET /api/voice/recordings`, `…/{id}.wav` and
+  `DELETE /api/voice/recordings` proxy the worker's API.
 - **GPU speech**: `POST /api/voice/gpu-speech/up|down|status` runs
   `services/speech-gpu/speech.sh` (only where the `gpu` helper exists) and streams its result
   into `voice.status`.
@@ -416,7 +431,8 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   a pending permission request with its answer buttons, live transcript, reply latency). A tab
   without the media (another tab, another device, or this tab after a reload) shows the call, its
   controls and "Move audio here", which starts a new call with the agent from this tab. Settings → Voice
-  (`routes/_app/settings/voice.tsx`) and the voice picker in the agent editor.
+  (`routes/_app/settings/voice.tsx`, the STT model picker, language, vocabulary and recordings in
+  `components/voice/stt-settings.tsx`) and the voice picker in the agent editor.
 
 ## Extension points
 
@@ -438,7 +454,8 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
   `services.voice.callFor(agentId)` tells whether the agent is in a call.
 - **Owns:** `services/voice/**`, `services/speech-gpu/**`, `packages/server/src/voice/**`,
   `shared/src/events/voice.ts`, `shared/src/api-voice.ts`, web `routes/_app/settings/voice.tsx`,
-  `components/voice/**`, `e2e/voice-call.spec.ts`, `test/{voice.test.ts,fake-voice-worker.ts}`.
+  `components/voice/**`, `e2e/{voice-call,stt-settings}.spec.ts`,
+  `test/{voice.test.ts,fake-voice-worker.ts}`.
 
 ### Phase 2c: UI build-out
 
@@ -470,6 +487,9 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 - Media needs direct UDP between the browser and the worker host (tailnet host candidates; no
   STUN/TURN). Not tried from km-mbp in this phase; the e2e runs headless Chromium on dev.
 - Echo: use a headset; with speakers the agent's voice can barge in on itself.
+- STT: only Whisper uses the custom vocabulary (Parakeet and Canary have no biasing). Quiet,
+  band-limited input still loses words the VAD doesn't hear (`services/speech-gpu/BENCHMARKS.md`).
+  The STT server runs one model at a time, for everyone using it.
 
 ## Known gaps (general)
 

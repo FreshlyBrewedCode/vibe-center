@@ -234,9 +234,9 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
                 </Button>
               </div>
               <p className="text-muted-foreground text-xs">
-                Wakes km-pc, starts Parakeet STT and Kokoro TTS there and opens the tunnels
-                (services/speech-gpu/speech.sh). It refuses while someone is using km-pc. Stopping leaves
-                km-pc awake: run <code>gpu sleep</code> when nothing else needs it.
+                Wakes km-pc, starts the STT server (with the model chosen below) and Kokoro TTS there and
+                opens the tunnels (services/speech-gpu/speech.sh). It refuses while someone is using km-pc.
+                Stopping leaves km-pc awake: run <code>gpu sleep</code> when nothing else needs it.
               </p>
               {s.gpuSpeech.lastOutput && (
                 <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px] leading-snug">

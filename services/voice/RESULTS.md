@@ -63,6 +63,14 @@ The agent is still the floor: prompt → first text ~1.1–1.6 s. Next levers ar
 prototype listed (talker/reasoner split, speculative prompting at the Smart Turn decision,
 first-clause TTS).
 
+## 2026-10-30: whole-turn speech recognition
+
+The STT now hears each user turn whole (`voice_worker/turns.py`) and the STT server passes
+Parakeet the real audio length: 10.3 → 3.0 % WER on the new evaluation set
+(`services/speech-gpu/BENCHMARKS.md`). The e2e call (fake agent, GPU speech) transcribed all five
+utterances exactly with STT 46 ms (request → text) and the same turn latency as before (first
+agent audio out: median 512 ms after the user stopped).
+
 ## Known issues seen in these runs
 
 - Smart Turn called "Sorry, stop. Just say goodbye." incomplete in some runs (twice today); the turn then

@@ -8,6 +8,7 @@ import type {
   Harness,
   Message,
   MessagesResponse,
+  RecordingsResponse,
   VoiceStatus,
 } from "../packages/shared/src/index.ts";
 import { dataDir, FAKE_AGENT, mintLink, ROOT } from "./helpers.ts";
@@ -175,6 +176,10 @@ test("call an agent: transcripts in the DM, tool filler, barge-in, proactive eve
   await page.getByRole("button", { name: "Preview voice" }).click();
   expect((await preview).headers()["content-type"]).toBe("audio/wav");
 
+  // Keep the turns as the STT hears them (debug recordings): the audio that came through
+  // Chromium's processing, Opus and the worker's resampling, kept in test-results/voice.
+  expect((await page.request.patch("/api/voice/settings", { data: { recordTurns: 20 } })).ok()).toBe(true);
+
   // Call from the DM header. The fake mic starts playing the scenario at getUserMedia.
   await page.goto(`/agents/${agent.id}`);
   const t0 = Date.now();
@@ -278,6 +283,24 @@ test("call an agent: transcripts in the DM, tool filler, barge-in, proactive eve
   await expect(page.getByTestId("presence")).toHaveText("Idle", { timeout: 10_000 });
   expect(await (await page.request.get("/api/voice/calls")).json()).toEqual([]);
   await other.close();
+
+  // One recording per user turn, with the transcript the STT returned for it.
+  const { recordings } = (await (
+    await page.request.get("/api/voice/recordings")
+  ).json()) as RecordingsResponse;
+  expect(recordings.length).toBeGreaterThanOrEqual(4);
+  expect(recordings.map((r) => r.text.toLowerCase()).join(" ")).toContain("weather");
+  const recDir = join(OUT, "recordings");
+  mkdirSync(recDir, { recursive: true });
+  for (const r of recordings) {
+    const wav = await page.request.get(`/api/voice/recordings/${r.id}.wav`);
+    expect(wav.headers()["content-type"]).toBe("audio/wav");
+    writeFileSync(join(recDir, `${r.id}.wav`), await wav.body());
+  }
+  writeFileSync(join(recDir, "recordings.json"), JSON.stringify(recordings, null, 1));
+  expect(await (await page.request.delete("/api/voice/recordings")).json()).toEqual({
+    deleted: recordings.length,
+  });
 
   // Latency report from the worker's call log, joined with the page's own audio onsets.
   const logs = join(dataDir, "voice", "calls");

@@ -166,19 +166,17 @@ function SttModelRow({
         <Meter
           label="Accuracy"
           level={m.wer === null ? null : accuracyLevel(m.wer)}
-          detail={m.wer === null ? "" : `${m.wer}% WER`}
+          detail={m.wer === null ? "" : `${m.wer.toFixed(1)}% WER`}
         />
         <span className="text-muted-foreground">
           {m.languages.join(", ")} · {mb(m.vramMb)} VRAM ·{" "}
           {m.status === "absent" || m.status === "downloading"
             ? `${mb(m.downloadMb)} download`
-            : `${mb(m.diskMb)} on disk`}
+            : `${mb(m.diskMb)} on disk`}{" "}
+          · {m.supportsVocabulary ? "uses the custom vocabulary" : "no custom vocabulary"}
         </span>
       </div>
-      <p className="text-muted-foreground text-xs">
-        {m.accuracy}
-        {m.supportsVocabulary ? " Custom vocabulary: yes." : " Custom vocabulary: no."}
-      </p>
+      <p className="text-muted-foreground text-xs">{m.accuracy}</p>
       {p && (
         <div className="space-y-1" data-testid={`stt-progress-${m.id}`}>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">

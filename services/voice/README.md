@@ -38,25 +38,31 @@ tailnet URL by default) and the browser must reach the worker's host over UDP.
 |---|---|---|
 | `VC_WORKER_TOKEN` | (required) | Bearer token for every request from the app |
 | `VC_WORKER_HOST`, `VC_WORKER_PORT` | `127.0.0.1`, `7860` | HTTP listen address |
-| `VC_VOICE_DATA_DIR` | `~/.vibe-center/voice` | `calls/*.jsonl` latency logs, `cues/` filler cache |
+| `VC_VOICE_DATA_DIR` | `~/.vibe-center/voice` | `calls/*.jsonl` latency logs, `cues/` filler cache, `recordings/` (debug) |
 | `WHISPER_MODEL` | `base.en` | CPU fallback STT (faster-whisper int8) |
 | `VAD_STOP_SECS` | `0.2` | Silero silence before Smart Turn decides |
+| `VAD_MIN_VOLUME` | `0.6` | loudness Silero also needs (0–1 over -110..-10 LUFS; Pipecat's default) |
+| `STT_PREROLL_S` | `1.0` | audio kept before the VAD's speech start, so the first word isn't clipped |
 | `PROMPT_TIMEOUT_S` | `45` | a voice turn longer than this is cancelled with a spoken apology |
 | `TTS_VOICE` | `af_heart` | voice when the agent has none |
 
-Per call the app sends the agent's voice, the STT/TTS URLs, the filler switch and the bridge URL
-+ credential (`POST /calls`), so settings changes need no restart.
+Per call the app sends the agent's voice, the STT/TTS URLs, the filler switch, the STT language
+and vocabulary, the debug-recording count and the bridge URL + credential (`POST /calls`), so
+settings changes need no restart.
 
 ## API (app → worker, Bearer token)
 
 | | |
 |---|---|
 | `GET /health` | `{status: ok\|loading\|error, version, call}`; `loading` while the CPU models load (~3 s) |
-| `POST /calls` | `{call_id, bridge_url, bridge_token, agent_name, voice, stt_url, tts_url, filler, sdp, type}` → `{sdp, type, pc_id, speech}`. Dials the bridge before answering. One call at a time: a new one ends the old |
+| `POST /calls` | `{call_id, bridge_url, bridge_token, agent_name, voice, stt_url, tts_url, filler, vocabulary, stt_language, record_turns, sdp, type}` → `{sdp, type, pc_id, speech}`. Dials the bridge before answering. One call at a time: a new one ends the old. `vocabulary` (settings + agent names) goes to the STT as the OpenAI `prompt` and to the CPU Whisper as hotwords; `stt_language` `""` lets the model detect it; `record_turns` > 0 keeps that many turn recordings |
 | `PATCH /calls/{id}/ice` | `{pc_id, candidates: [{candidate, sdp_mid, sdp_mline_index}]}` |
 | `DELETE /calls/{id}` | hang up |
 | `GET /voices?tts_url=` | the TTS server's voice list, else the CPU Kokoro's English voices |
 | `POST /tts` | `{text, voice, tts_url}` → WAV (the voice picker's preview) |
+| `GET /recordings` | `{recordings: [{id, call_id, turn, text, stt, duration, at}]}`, newest first: the debug turn recordings |
+| `GET /recordings/{id}.wav` | one of them: 16 kHz mono, what the STT got for the whole turn |
+| `DELETE /recordings` | `{deleted}` |
 
 ## Bridge protocol (worker ⇄ app, JSON over one WebSocket per call)
 
@@ -87,8 +93,18 @@ Per call the app sends the agent's voice, the STT/TTS URLs, the filler switch an
 `voice_worker/call.py` builds one pipeline per call:
 
 ```
-transport.input → STT → LLMUserAggregator(Silero VAD, Smart Turn v3) → BridgeTalker → TTS → transport.output → OutputTap
+transport.input → STT → TurnUserAggregator(Silero VAD, Smart Turn v3) → BridgeTalker → TTS → transport.output → OutputTap
 ```
+
+- **Speech to text** (`turns.py`): the STT hears the whole user turn, not VAD fragments. Its
+  buffer opens at the turn's first VAD start (with 1 s of pre-roll) and keeps everything,
+  pauses included, until the turn ends; at every VAD stop the whole turn so far is transcribed
+  and replaces the previous transcript. Pipecat's own segmented STT transcribed each piece
+  between pauses alone and dropped what the VAD missed between them: on the evaluation set that
+  was 10–15 % WER against 3–7 % now (`services/speech-gpu/BENCHMARKS.md`). The HTTP STT gets
+  the vocabulary as `prompt` and the language; the CPU fallback (faster-whisper base.en) the
+  vocabulary as hotwords. With `record_turns` the turn's audio and final transcript are kept in
+  `<data>/recordings/` (the newest N).
 
 - **Turn-taking**: Pipecat's default Silero VAD (stop 0.2 s) + `LocalSmartTurnAnalyzerV3`.
   `EndOfTurnStop` logs the decision. The end of the user's turn is **silent** (the prototype's
@@ -115,11 +131,31 @@ transport.input → STT → LLMUserAggregator(Silero VAD, Smart Turn v3) → Bri
   `prompt_sent`, `first_update`, `first_chunk`, `filler_out`, `tts_request`, `tts_first_audio`,
   `first_audio_out`, tool calls, `barge_in`/`cancel_sent`, `prompt_done`, transcripts and reply.
 
+## Evaluating speech recognition
+
+`eval/` is a small evaluation set of things people say to a coding agent (36 utterances, 10
+voices, pauses mid-sentence, clean / noisy / phone conditions) and a runner that pushes each clip
+through Pipecat's VAD as a call would, then transcribes it the old way (VAD segments) and the new
+way (whole turn):
+
+```sh
+./run.sh python -m eval.build                                   # synthesize the set (CPU Kokoro; cached)
+./run.sh python -m eval.run --stt http://127.0.0.1:8401 [--vocab] # the STT server's active model
+./run.sh python -m eval.run --stt cpu                           # the CPU fallback
+./run.sh python -m eval.export                                  # the set as sent to the STT, for GPU benchmarks
+```
+
+Results (every hypothesis) land in `eval/out/results/<label>.json`; the numbers are in
+`services/speech-gpu/BENCHMARKS.md`.
+
 ## Tests
 
 - `./run.sh check`: ruff, and pytest for the bridge client (against an in-process fake app),
-  the code-fence filter, the latency log and the cues
+  the code-fence filter, the latency log, the cues, whole-turn transcription and the recordings
+  (`test_turns.py`), the call's STT settings (`test_stt.py`); then the GPU speech server's model
+  catalog API against fake models (`../speech-gpu/tests`)
 - `packages/server/test/voice.test.ts`: the app side against `fake-voice-worker.ts`
 - `e2e/voice-call.spec.ts`: a whole call through the real app and this worker, headless
-  Chromium with a fake mic playing `tests/scenario.py` (synthesized by `tests/make_audio.py`).
+  Chromium with a fake mic playing `tests/scenario.py` (synthesized by `tests/make_audio.py`),
+  with turn recordings on (kept in `test-results/voice/recordings/`).
   Results and latencies: [RESULTS.md](RESULTS.md)
