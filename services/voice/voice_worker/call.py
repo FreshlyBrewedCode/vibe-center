@@ -13,7 +13,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregator, LLMUserAggregatorParams
+from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregatorParams
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
@@ -23,8 +23,12 @@ from .bridge import Bridge
 from .config import CONFIG, CallConfig
 from .cues import Cues
 from .latency import TurnLog, summary
+from .recordings import Recordings
 from .speech import TTS_SAMPLE_RATE, make_stt, make_tts
 from .talker import BridgeTalker, EndOfTurnStop, MicGate, OutputTap
+from .turns import TurnUserAggregator
+
+RECORDINGS = Recordings(CONFIG.recordings_dir)
 
 
 class Call:
@@ -48,6 +52,8 @@ class Call:
             "filler": cfg.filler,
             "agent": cfg.agent_name,
             "vad_stop_secs": CONFIG.vad_stop_secs,
+            "vocabulary": len(cfg.vocabulary),
+            "record_turns": cfg.record_turns,
         }
         stamp = time.strftime("%Y%m%d-%H%M%S")
         self.log = TurnLog(CONFIG.log_dir / f"call-{stamp}-{cfg.call_id[:8]}.jsonl", cfg.call_id, meta)
@@ -77,9 +83,26 @@ class Call:
         if self.task:
             asyncio.get_running_loop().create_task(self.task.cancel())
 
+    def _record(self, turn: int, pcm: bytes, sample_rate: int, text: str) -> None:
+        RECORDINGS.save(
+            keep=self.cfg.record_turns,
+            call_id=self.id,
+            turn=turn,
+            pcm=pcm,
+            sample_rate=sample_rate,
+            text=text,
+            stt=self.stt_url or f"cpu {CONFIG.whisper_model}",
+        )
+
     def _build_services(self):
         cues = Cues(CONFIG.cue_dir, self.cfg.voice, self.cfg.filler).load()
-        return cues, make_stt(self.stt_url, self.log), make_tts(self.tts_url, self.cfg.voice, self.log)
+        stt = make_stt(
+            self.stt_url,
+            self.log,
+            vocabulary=self.cfg.vocabulary,
+            recorder=self._record if self.cfg.record_turns > 0 else None,
+        )
+        return cues, stt, make_tts(self.tts_url, self.cfg.voice, self.log)
 
     async def run(self, connection: SmallWebRTCConnection) -> None:
         try:
@@ -114,7 +137,7 @@ class Call:
         self.mic = MicGate()
         self.mic.muted = self.muted
         stop = EndOfTurnStop(turn_analyzer=LocalSmartTurnAnalyzerV3(), log=self.log)
-        user_agg = LLMUserAggregator(
+        user_agg = TurnUserAggregator(
             LLMContext(),
             params=LLMUserAggregatorParams(
                 vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=CONFIG.vad_stop_secs)),

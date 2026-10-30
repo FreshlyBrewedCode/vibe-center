@@ -6,6 +6,9 @@
     DELETE /calls/{id}           hang up
     GET    /voices?tts_url=      TTS voices (the GPU server's list, else the CPU Kokoro's)
     POST   /tts                  {"text", "voice", "tts_url"} -> audio/wav (voice preview)
+    GET    /recordings           debug turn recordings (newest first), if a call kept any
+    GET    /recordings/{id}.wav  one of them
+    DELETE /recordings           delete them all
 
 The browser never talks to this server: the app proxies signalling (cookie-authenticated, same
 origin), and only the WebRTC media flows directly between the browser and this host.
@@ -24,7 +27,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from loguru import logger
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.request_handler import (
@@ -36,7 +39,7 @@ from pipecat.transports.smallwebrtc.request_handler import (
 from pydantic import BaseModel
 
 from .bridge import Bridge, BridgeError
-from .call import Call
+from .call import RECORDINGS, Call
 from .config import CONFIG, CallConfig
 from .speech import healthy, local_voices, pcm_to_wav_bytes, preload, synth_pcm
 
@@ -104,6 +107,8 @@ class CallRequest(BaseModel):
     stt_url: str = ""
     tts_url: str = ""
     filler: bool = True
+    vocabulary: list[str] = []
+    record_turns: int = 0
     sdp: str
     type: str = "offer"
 
@@ -133,6 +138,8 @@ async def start_call(req: CallRequest):
         stt_url=req.stt_url,
         tts_url=req.tts_url,
         filler=req.filler,
+        vocabulary=[t.strip()[:100] for t in req.vocabulary if t.strip()][:200],
+        record_turns=max(0, min(req.record_turns, 500)),
     )
     # per call: use a GPU server only if it answers right now (one that appears later is used
     # by the next call; one that disappears mid-call falls back per request)
@@ -242,6 +249,24 @@ async def tts(body: TtsBody):
     except Exception as e:
         raise HTTPException(502, f"synthesis failed: {e}") from e
     return Response(pcm_to_wav_bytes(pcm), media_type="audio/wav", headers={"X-Speech": url or "cpu"})
+
+
+@app.get("/recordings", dependencies=[Depends(require_token)])
+async def recordings():
+    return {"recordings": await asyncio.to_thread(RECORDINGS.list)}
+
+
+@app.get("/recordings/{rid}.wav", dependencies=[Depends(require_token)])
+async def recording(rid: str):
+    path = RECORDINGS.wav(rid)
+    if path is None:
+        raise HTTPException(404, "no such recording")
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.delete("/recordings", dependencies=[Depends(require_token)])
+async def clear_recordings():
+    return {"deleted": await asyncio.to_thread(RECORDINGS.clear)}
 
 
 def main():

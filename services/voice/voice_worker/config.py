@@ -44,6 +44,10 @@ class Config:
     def cue_dir(self) -> Path:
         return self.data_dir / "cues"
 
+    @property
+    def recordings_dir(self) -> Path:
+        return self.data_dir / "recordings"
+
 
 @dataclass
 class CallConfig:
@@ -57,6 +61,10 @@ class CallConfig:
     stt_url: str = ""
     tts_url: str = ""
     filler: bool = True
+    # terms the STT should recognise (settings + agent names); used where the model supports it
+    vocabulary: list[str] = field(default_factory=list)
+    # debug: keep the last N user turns as audio + transcript (0 = off)
+    record_turns: int = 0
 
 
 CONFIG = Config()

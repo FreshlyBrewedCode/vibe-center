@@ -26,6 +26,7 @@ from pipecat.utils.time import time_now_iso8601
 
 from .config import CONFIG
 from .latency import TurnLog, now_ms
+from .turns import TurnRecorder, TurnTranscriptionMixin
 
 TTS_SAMPLE_RATE = 24000
 TEXT_TRANSFORMS = [("*", strip_markdown)]
@@ -100,14 +101,16 @@ def local_voice(voice: str) -> str:
 # ---- STT -------------------------------------------------------------------------------------
 
 
-class HttpSTTService(SegmentedSTTService):
-    """One POST /v1/audio/transcriptions per VAD-gated segment (16 kHz mono WAV), with the
-    local Whisper as fallback when the server can't be reached."""
+class HttpSTTService(TurnTranscriptionMixin, SegmentedSTTService):
+    """One POST /v1/audio/transcriptions per VAD stop with the whole turn so far (16 kHz mono
+    WAV; see turns.py), with the local Whisper as fallback when the server can't be reached.
+    `vocabulary` goes out as the OpenAI `prompt`: the server applies it where its model can."""
 
-    def __init__(self, *, base_url: str, log: TurnLog, **kwargs):
+    def __init__(self, *, base_url: str, log: TurnLog, vocabulary: list[str] | None = None, **kwargs):
         super().__init__(settings=STTSettings(model=HTTP_MODEL, language=Language.EN), **kwargs)
         self._url = f"{base_url.rstrip('/')}/v1/audio/transcriptions"
         self._log = log
+        self._vocabulary = vocabulary or []
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=1.0))
 
     def can_generate_metrics(self) -> bool:
@@ -115,18 +118,22 @@ class HttpSTTService(SegmentedSTTService):
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
         self._log.set("stt_request")
+        data = {"model": HTTP_MODEL, "language": "en", "response_format": "verbose_json"}
+        if self._vocabulary:
+            data["prompt"] = vocabulary_prompt(self._vocabulary)
         try:
             r = await self._client.post(
-                self._url,
-                files={"file": ("audio.wav", audio, "audio/wav")},
-                data={"model": HTTP_MODEL, "language": "en", "response_format": "json"},
+                self._url, files={"file": ("audio.wav", audio, "audio/wav")}, data=data
             )
             r.raise_for_status()
-            text = (r.json().get("text") or "").strip()
+            body = r.json()
+            text = (body.get("text") or "").strip()
+            if body.get("model"):
+                self._log.info(stt_model=body["model"])
         except (httpx.TransportError, httpx.HTTPStatusError) as e:
             logger.warning(f"HTTP STT failed ({e!r}); falling back to local whisper")
             self._log.info(stt_fallback=repr(e))
-            text = await asyncio.to_thread(_local_transcribe, audio)
+            text = await asyncio.to_thread(_local_transcribe, wav_to_pcm(audio), self._vocabulary)
         self._log.set("stt_response")
         if text:
             yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), Language.EN)
@@ -136,33 +143,60 @@ class HttpSTTService(SegmentedSTTService):
         await self._client.aclose()
 
 
-def _local_transcribe(wav: bytes) -> str:
+class LocalWhisperSTTService(TurnTranscriptionMixin, SegmentedSTTService):
+    """The CPU fallback: faster-whisper (CONFIG.whisper_model, int8) in this process, with the
+    vocabulary as hotwords."""
+
+    def __init__(self, *, log: TurnLog, vocabulary: list[str] | None = None, **kwargs):
+        super().__init__(settings=STTSettings(model=CONFIG.whisper_model, language=Language.EN), **kwargs)
+        self._log = log
+        self._vocabulary = vocabulary or []
+
+    @property
+    def wants_wav_segments(self) -> bool:
+        return False
+
+    def can_generate_metrics(self) -> bool:
+        return True
+
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
+        self._log.set("stt_request")
+        text = await asyncio.to_thread(_local_transcribe, audio, self._vocabulary)
+        self._log.set("stt_response")
+        if text:
+            yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), Language.EN)
+
+
+def vocabulary_prompt(terms: list[str]) -> str:
+    return ", ".join(t.strip() for t in terms if t.strip())
+
+
+def wav_to_pcm(wav: bytes) -> bytes:
     with wave.open(io.BytesIO(wav)) as w:
-        pcm = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32) / 32768
-    segments, _ = _whisper_model(CONFIG.whisper_model).transcribe(pcm, language="en")
+        return w.readframes(w.getnframes())
+
+
+def _local_transcribe(pcm: bytes, vocabulary: list[str] | None = None) -> str:
+    audio = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768
+    segments, _ = _whisper_model(CONFIG.whisper_model).transcribe(
+        audio,
+        language="en",
+        hotwords=vocabulary_prompt(vocabulary) if vocabulary else None,
+        condition_on_previous_text=False,
+    )
     return " ".join(s.text.strip() for s in segments).strip()
 
 
-def make_stt(stt_url: str | None, log: TurnLog):
+def make_stt(
+    stt_url: str | None,
+    log: TurnLog,
+    *,
+    vocabulary: list[str] | None = None,
+    recorder: TurnRecorder | None = None,
+):
     if stt_url:
-        return HttpSTTService(base_url=stt_url, log=log)
-    from pipecat.services.whisper.stt import WhisperSTTService
-
-    class MarkedWhisperSTT(WhisperSTTService):
-        def _load(self):
-            self._model = _whisper_model(self._settings.model, self._device, self._compute_type)
-
-        async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
-            log.set("stt_request")
-            async for f in super().run_stt(audio):
-                log.set("stt_response")
-                yield f
-
-    return MarkedWhisperSTT(
-        settings=WhisperSTTService.Settings(model=CONFIG.whisper_model, language=Language.EN),
-        device="cpu",
-        compute_type="int8",
-    )
+        return HttpSTTService(base_url=stt_url, log=log, vocabulary=vocabulary, recorder=recorder)
+    return LocalWhisperSTTService(log=log, vocabulary=vocabulary, recorder=recorder)
 
 
 # ---- TTS -------------------------------------------------------------------------------------

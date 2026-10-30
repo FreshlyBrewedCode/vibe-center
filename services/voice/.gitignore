@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# STT evaluation set (eval/build.py)
+eval/out/
