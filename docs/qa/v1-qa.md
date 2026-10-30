@@ -161,3 +161,130 @@ fixed card-grouping and mobile header. Added four new ones for the screens the s
 cover: `dm-relay-light.png` (agent-to-agent relay), `call-indicator-light.png` /
 `call-indicator-mobile-light.png` (the new global call indicator), `voice-interrupted-light.png`
 (the interrupted marker).
+
+---
+
+# Round 2: UI-side fixes from the v1 code review
+
+Done against `main` at `09d1413`, in its own worktree/branch, alongside an Opus agent fixing the
+server-lifecycle findings from the same review (`docs/reviews/v1-review.md`, not tracked in this
+worktree) in parallel. This round covers the review's UI/web-package findings end to end: fix,
+manual verification with Playwright against a local server, refreshed screenshots, and e2e
+coverage for the two fixes most at risk of regressing silently.
+
+## What changed
+
+1. **DM composer locked by a stale health check (H2, UI half)** — the composer now disables only
+   for a confirmed-unusable harness (`not_installed` or `auth_required`); a cached `error` (e.g. a
+   probe timeout at boot) still shows the banner but leaves sending enabled, since a real turn
+   might work. A send failure, or the banner's own "Check again" button, re-probes the harness.
+   Verified by hand (a harness whose command is `true` — exists, exits immediately, probes as
+   `error`) and with a new e2e case (`e2e/chat.spec.ts`) that asserts the composer and Send button
+   stay enabled in exactly that state.
+
+2. **Failure states that point to the fix** — turn-level errors now carry a `hint`
+   (`shared/domain.ts`'s error message `data`), rendered as a "Fix in Settings" link via a new
+   `FixInSettingsLink` component, reused by the composer's own banner (→ Harnesses) and by a failed
+   MCP gateway tool call's card (→ MCP servers). Voice's existing offline message already named
+   "Settings → Voice" and wasn't changed. Not separately covered by a new e2e case — it reuses the
+   same `ApiError.hint`/message `data.hint` plumbing the composer fix already exercises, and a
+   from-scratch harness-crash-mid-turn scenario needs more setup (a process that answers
+   `session/new` then dies) than the time budget allowed; low risk since the rendering is a plain
+   conditional on existing, tested data.
+
+3. **Templates pre-fill harness, model, tools, voice** — "Coding agent" and "Manager" now set a
+   harness (Claude Code), a model picked from the harness's probed list by a "sonnet"-tier
+   preference (falls back to the harness default if nothing's probed yet), a persona voice, and a
+   built-in tool preset applied via `PATCH /agents/:id/tools` right after create (Manager: agents +
+   memory on; Coding agent: memory + conversation search on, agent-messaging off, which also
+   narrows M3's default-on trust-model gap for solo coding agents). "Blank" keeps the harness
+   default and no tool changes. Verified with a refreshed `agent-editor-light.png` (shows the
+   "Coding agent" template's pre-filled description/prompt) and a new e2e assertion in
+   `e2e/ui.spec.ts` that the harness combobox shows "Claude Code" before the test's own harness
+   swap, and that the created agent's `send_message_to_agent` tool is off while `memory_save`
+   stays on.
+
+4. **Searchable model combobox (M6)** — added `components/combobox.tsx` (Popover + Command,
+   grouped, searchable) and routed any select-type config option through it once it has more than
+   20 choices (`OptionSelect` in `agent-form.tsx`); shorter lists (Claude Code's handful of models)
+   keep the plain Select. Verified for real against the actual OpenCode preset (~580 models,
+   screenshots below) — search narrowed "deepseek-v4.1-flash-free" to one grouped match instantly.
+
+5. **Details panel: Tools and Voice sections (spec: "partial")** — replaced the empty placeholder
+   with a compact per-server tool summary (built-in / each MCP server, "`n` of `m` on", a link to
+   the full editor) and a Voice section (the agent's voice, a preview button reusing the voice
+   picker's preview logic via a new `usePreviewVoice` hook, and the live call state when in a
+   call). Verified with a refreshed `dm-details-light.png`.
+
+6. **Custom harness env masked like MCP secrets (L1, UI half)** — `Harness.env` is now a
+   `SecretMap` (key + last-4 hint, never the value) in the shared contract, and the harness form
+   reuses the same write-only `SecretRows` editor the MCP server form uses (extracted into
+   `components/mcp/secret-rows.tsx`), instead of a raw `KEY=value` textarea. Since the review
+   assigns this finding's API side to the Opus branch too, this round also made the minimal
+   server-side change needed to keep the UI honest end to end now (masking in
+   `domain/harnesses.ts`, a `rawLaunchConfig` accessor so process spawn still gets the real env) —
+   expect a rebase conflict here against the Opus branch at integration, to be resolved in favor of
+   whichever version lands first. Verified by hand: added a custom harness with an env secret
+   through Settings → Harnesses, reopened it, and confirmed the value shows as
+   `unchanged (…7890)`, never the real value (`settings-harness-secret-light.png`).
+
+7. **Low-severity findings taken (L16)** — replaced the native `confirm()` dialogs for memory and
+   MCP server deletes with the same `AlertDialog` agent/device deletes already use
+   (`routes/_app/memories.tsx`, `routes/_app/settings/mcp.tsx`). Also updated `AGENTS.md`'s "UI
+   extension points" section, which still described the DM header call button, the details panel's
+   Voice section, the agent editor's Voice section and Settings → Voice as open 2b seams; all four
+   were already implemented in the code (the Voice section in the details panel was the one
+   genuinely-open seam, filled by item 5 above). Other low findings (L2–L15, L17, L18) are server
+   or `services/voice`/`services/speech-gpu` scoped, out of this round's `packages/web` brief.
+
+## OpenCode: chat-tested end to end
+
+QA's round 1 flagged OpenCode as not chat-tested through the UI. Created an agent on the real
+`opencode` preset with model `opencode/deepseek-v4.1-flash-free` (`opencode models` confirmed it's
+available), entirely through the UI against a local server (`--local --no-voice`, a throwaway
+`--data-dir`), using a nix Chromium (`nix build nixpkgs#chromium -o .chromium`, this host's
+Playwright needs it) since the box has no `t3 browser setup`:
+
+- **Create + model search**: harness switched to OpenCode, the model combobox (now >20 choices)
+  opened, searching `deepseek-v4.1-flash-free` narrowed instantly to the one grouped match.
+- **Chat + streaming**: "Say hello in exactly five words." got a real streamed reply ("Hello there,
+  how are you?") from the live model.
+- **Stop**: a long prompt ("Write a very long, detailed 300-word essay about clouds.") was
+  cancelled from "Thinking" before any text had streamed — correctly left no partial/garbage
+  message and returned presence to Idle (OpenCode's cancel path, same as the fake harness's, just
+  exercised against the real adapter).
+- **Follow-up turn**: a trivial prompt right after ("Just say OK.") queued and completed normally
+  (~20s on the free tier) with a clean "OK" reply, confirming the queue and presence recover
+  correctly after a cancel.
+
+No adapter-level problems found; nothing to report back to the Opus branch for `acp/`.
+
+## Evidence
+
+- `bun run check` — pass (lint, typecheck across shared/server/web/e2e, `bun test`: 65/65 across 5
+  files; unchanged from round 1's count since this round didn't add server-side bun tests).
+- `bun run check:voice` — pass (ruff + 10 pytest cases, unchanged).
+- `bun run e2e` — pass, 5/5 specs (chat ×2 — the new composer-lock case, mcp, ui, voice-call).
+- Manual verification: a local `--local --no-voice --data-dir /tmp/…` server, driven with
+  Playwright (nix Chromium) for the OpenCode flow above and the harness-secret-masking flow; every
+  server/browser process started was torn down afterwards (`ps aux` checked clean), no test ever
+  pointed at `~/.vibe-center`.
+- Screenshots: `docs/screenshots/agent-editor-light.png`, `dm-details-light.png` refreshed in
+  place; added `settings-harness-secret-light.png`. A few other stock screenshots
+  (`dm-light.png`, `dm-dark.png`, `command-palette-light.png`, `settings-general-light.png`,
+  `settings-harnesses-light.png`) picked up incidental byte diffs from the same script run
+  (timestamps, demo harness ids) — not behavior changes.
+
+## Open issues
+
+- The harness-env-masking server plumbing (item 6) duplicates work the Opus branch is also doing
+  for the same review finding (L1); flagged above, expect a rebase conflict to resolve at
+  integration rather than two independent masking implementations living on `main`.
+- Item 2's "point to the fix" coverage is UI plumbing only (a `hint` on turn-level errors and
+  gateway tool-call failures, rendered as a link using data that already exists); a live
+  "harness crashes mid-turn" or "MCP server goes down mid-call" scenario wasn't reproduced end to
+  end in this pass — the rendering path was verified against the existing error/tool-call message
+  shapes instead, and the review itself notes this gap is traced by code reading, not reproduced.
+- Didn't touch `packages/server/src/acp/` or process-management code, per the brief; H1 (session
+  setup race), M1 (agent deletion), M2 (process cleanup), M4 (voice queueing) and the rest of the
+  server-lifecycle findings are the Opus branch's scope.
