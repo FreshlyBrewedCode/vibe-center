@@ -3,6 +3,7 @@ import type { McpServerView } from "@vibe-center/shared";
 import { ChevronRight, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { McpOAuthStatus } from "@/components/mcp/oauth";
 import { McpServerDialog } from "@/components/mcp/server-form";
 import { McpStatusBadge } from "@/components/mcp/status-badge";
 import {
@@ -30,7 +31,7 @@ function McpServers() {
   return (
     <Section
       title="MCP servers"
-      description="Every agent reaches these through the app's MCP gateway. Choose which tools each agent gets in its settings (Edit agent → Tools). Built-in tools are on for every agent by default; tools from servers you add here are off until you enable them for an agent."
+      description="Every agent reaches these through the app's MCP gateway. Choose which tools each agent gets in its settings (Edit agent → Tools). Built-in tools are on for every agent by default; tools from servers you add here are off until you enable them for an agent. An HTTP server that asks for OAuth shows Sign in; that one sign-in is shared by every agent."
     >
       <Card>
         <ul className="divide-y divide-line">
@@ -128,6 +129,7 @@ function ServerRow({ server: s }: { server: McpServerView }) {
           Secrets: {[...Object.keys(s.env), ...Object.keys(s.headers)].join(", ")}
         </p>
       )}
+      <McpOAuthStatus server={s} />
       {s.status.state === "error" && s.status.message && (
         <pre className="vc-scroll max-h-32 overflow-auto whitespace-pre-wrap rounded-[8px] border border-destructive/30 bg-destructive/8 px-3 py-2 font-mono text-destructive text-xs">
           {s.status.message}

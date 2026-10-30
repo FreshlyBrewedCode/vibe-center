@@ -20,6 +20,10 @@ import {
   type HarnessesResponse,
   type HarnessPatchBody,
   type InfoResponse,
+  type McpOAuthCallbackBody,
+  type McpOAuthCallbackResponse,
+  type McpOAuthStartBody,
+  type McpOAuthStartResponse,
   type McpServerBody,
   type McpServerPatchBody,
   type McpServersResponse,
@@ -308,6 +312,28 @@ export function useRefreshMcpServer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post<McpServerView>(mcpPaths.serverRefresh(id)),
+    onSuccess: (server) => upsertServer(qc, server),
+  });
+}
+
+/** Start an OAuth sign-in; the caller opens `authorizationUrl` (new tab, or this one on a phone). */
+export const useStartMcpOAuth = () =>
+  useMutation({
+    mutationFn: (v: { id: string; body: McpOAuthStartBody }) =>
+      api.post<McpOAuthStartResponse>(mcpPaths.serverOAuth(v.id), v.body),
+  });
+
+/** The redirect page's half: hand the authorization server's answer to the server. */
+export const useCompleteMcpOAuth = () =>
+  useMutation({
+    mutationFn: (body: McpOAuthCallbackBody) =>
+      api.post<McpOAuthCallbackResponse>(mcpPaths.oauthCallback, body),
+  });
+
+export function useDisconnectMcpOAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<McpServerView>(mcpPaths.serverOAuth(id)),
     onSuccess: (server) => upsertServer(qc, server),
   });
 }

@@ -22,6 +22,7 @@ import { Route as AppSettingsGeneralRouteImport } from './routes/_app/settings/g
 import { Route as AppSettingsHarnessesRouteImport } from './routes/_app/settings/harnesses'
 import { Route as AppSettingsMcpRouteImport } from './routes/_app/settings/mcp'
 import { Route as AppSettingsVoiceRouteImport } from './routes/_app/settings/voice'
+import { Route as OauthMcpCallbackRouteImport } from './routes/oauth.mcp.callback'
 import { Route as AppAgentsAgentIdIndexRouteImport } from './routes/_app/agents/$agentId/index'
 import { Route as AppAgentsAgentIdEditRouteImport } from './routes/_app/agents/$agentId/edit'
 
@@ -89,6 +90,11 @@ const AppSettingsVoiceRoute = AppSettingsVoiceRouteImport.update({
   path: '/voice',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const OauthMcpCallbackRoute = OauthMcpCallbackRouteImport.update({
+  id: '/oauth/mcp/callback',
+  path: '/oauth/mcp/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppAgentsAgentIdIndexRoute = AppAgentsAgentIdIndexRouteImport.update({
   id: '/agents/$agentId/',
   path: '/agents/$agentId/',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
+  '/oauth/mcp/callback': typeof OauthMcpCallbackRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/voice': typeof AppSettingsVoiceRoute
+  '/oauth/mcp/callback': typeof OauthMcpCallbackRoute
   '/settings': typeof AppSettingsIndexRoute
   '/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/agents/$agentId': typeof AppAgentsAgentIdIndexRoute
@@ -145,6 +153,7 @@ export interface FileRoutesById {
   '/_app/settings/harnesses': typeof AppSettingsHarnessesRoute
   '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/voice': typeof AppSettingsVoiceRoute
+  '/oauth/mcp/callback': typeof OauthMcpCallbackRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/agents/$agentId/edit': typeof AppAgentsAgentIdEditRoute
   '/_app/agents/$agentId/': typeof AppAgentsAgentIdIndexRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/settings/harnesses'
     | '/settings/mcp'
     | '/settings/voice'
+    | '/oauth/mcp/callback'
     | '/settings/'
     | '/agents/$agentId/edit'
     | '/agents/$agentId/'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/settings/harnesses'
     | '/settings/mcp'
     | '/settings/voice'
+    | '/oauth/mcp/callback'
     | '/settings'
     | '/agents/$agentId/edit'
     | '/agents/$agentId'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/_app/settings/harnesses'
     | '/_app/settings/mcp'
     | '/_app/settings/voice'
+    | '/oauth/mcp/callback'
     | '/_app/settings/'
     | '/_app/agents/$agentId/edit'
     | '/_app/agents/$agentId/'
@@ -203,6 +215,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  OauthMcpCallbackRoute: typeof OauthMcpCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -298,6 +311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsVoiceRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/oauth/mcp/callback': {
+      id: '/oauth/mcp/callback'
+      path: '/oauth/mcp/callback'
+      fullPath: '/oauth/mcp/callback'
+      preLoaderRoute: typeof OauthMcpCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/agents/$agentId/': {
       id: '/_app/agents/$agentId/'
       path: '/agents/$agentId'
@@ -362,6 +382,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  OauthMcpCallbackRoute: OauthMcpCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

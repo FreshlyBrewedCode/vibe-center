@@ -7,6 +7,7 @@ const labels: Record<McpServerStatus["state"], string> = {
   connected: "Connected",
   error: "Error",
   disabled: "Disabled",
+  needs_auth: "Needs sign-in",
 };
 
 export function McpStatusBadge({ status }: { status: McpServerStatus }) {
@@ -15,7 +16,7 @@ export function McpStatusBadge({ status }: { status: McpServerStatus }) {
       ? "ok"
       : status.state === "error"
         ? "destructive"
-        : status.state === "connecting"
+        : status.state === "connecting" || status.state === "needs_auth"
           ? "warn"
           : "outline";
   return (

@@ -1,4 +1,5 @@
-import type { McpServerBody, McpServerView } from "@vibe-center/shared";
+import { MCP_OAUTH_REDIRECT_PATH, type McpServerBody, type McpServerView } from "@vibe-center/shared";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,18 @@ export function McpServerDialog({
   const [url, setUrl] = useState(server?.url ?? "");
   const [env, setEnv] = useState<SecretRow[]>(rowsOf(server?.env));
   const [headers, setHeaders] = useState<SecretRow[]>(rowsOf(server?.headers));
+  const [clientId, setClientId] = useState(server?.oauth?.clientId ?? "");
+  const [clientSecret, setClientSecret] = useState("");
+  const [scopes, setScopes] = useState(server?.oauth?.scopes ?? "");
+  const storedSecret = server?.oauth?.clientSecret ?? null;
+
+  const oauthBody = (): McpServerBody["oauth"] => {
+    const id = clientId.trim() || null;
+    const sc = scopes.trim() || null;
+    if (!id && !sc) return null;
+    const secret = !id ? null : clientSecret ? clientSecret : storedSecret ? { keep: true as const } : null;
+    return { clientId: id, clientSecret: secret, scopes: sc };
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +56,7 @@ export function McpServerDialog({
       url: transport === "http" ? url.trim() || null : null,
       env: transport === "stdio" ? secretRowsToInput(env) : {},
       headers: transport === "http" ? secretRowsToInput(headers) : {},
+      oauth: transport === "http" ? oauthBody() : null,
     };
     save.mutate(body, {
       onSuccess: () => {
@@ -125,6 +139,53 @@ export function McpServerDialog({
                 onChange={setHeaders}
                 keyPlaceholder="Authorization"
               />
+              <details className="group" open={!!(server?.oauth?.clientId || server?.oauth?.scopes)}>
+                <summary className="flex cursor-pointer list-none items-center gap-1 font-medium text-sm [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+                  OAuth (advanced)
+                </summary>
+                <div className="mt-2 space-y-3">
+                  <p className="text-muted-foreground text-xs">
+                    Servers that ask for OAuth get a Sign in button; the app registers itself with their
+                    authorization server. For one without dynamic registration, register a client there with
+                    the redirect URI{" "}
+                    <code className="break-all font-mono">{`${location.origin}${MCP_OAUTH_REDIRECT_PATH}`}</code>{" "}
+                    and enter it here. Leave out an Authorization header to use OAuth.
+                  </p>
+                  <Label className="block space-y-1.5">
+                    <span>Client ID</span>
+                    <Input
+                      value={clientId}
+                      autoComplete="off"
+                      placeholder="dynamic registration"
+                      onChange={(e) => setClientId(e.target.value)}
+                    />
+                  </Label>
+                  <Label className="block space-y-1.5">
+                    <span>Client secret</span>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      value={clientSecret}
+                      disabled={!clientId.trim()}
+                      placeholder={
+                        storedSecret
+                          ? `unchanged${storedSecret.hint ? ` (…${storedSecret.hint})` : ""}`
+                          : "none (public client)"
+                      }
+                      onChange={(e) => setClientSecret(e.target.value)}
+                    />
+                  </Label>
+                  <Label className="block space-y-1.5">
+                    <span>Scopes</span>
+                    <Input
+                      value={scopes}
+                      placeholder="the server's choice"
+                      onChange={(e) => setScopes(e.target.value)}
+                    />
+                  </Label>
+                </div>
+              </details>
             </>
           )}
           <DialogFooter>

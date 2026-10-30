@@ -23,7 +23,7 @@ import {
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { useAgent, useAnswerPermission } from "@/lib/queries";
+import { useAgent, useAnswerPermission, useMcpServers } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AgentAvatar, UserAvatar } from "../agent-avatar";
 import { Markdown } from "../markdown";
@@ -326,6 +326,7 @@ function ToolCard({ message: m, fold }: { message: Extract<Message, { kind: "too
     (d.toolKind && TOOL_VERBS[d.toolKind]) || (d.gateway ? ["Called", "Calling"] : ["Used", "Using"]);
   const verb = verbs[done ? 0 : 1];
   const title = d.gateway ? gatewayTitle(d.gateway) : d.title.replace(LEADING_VERB, "");
+  const needsSignIn = useServerNeedsSignIn(d.toolStatus === "failed" ? d.gateway?.server : undefined);
   const status =
     d.toolStatus === "completed" ? (
       <Check className="size-3.5 shrink-0 text-presence-working" />
@@ -364,7 +365,7 @@ function ToolCard({ message: m, fold }: { message: Extract<Message, { kind: "too
           {d.gateway ? (
             <>
               <GatewayCallDetails call={d.gateway} />
-              {d.toolStatus === "failed" && (
+              {d.toolStatus === "failed" && !needsSignIn && (
                 <div className="flex items-center gap-2 pt-2">
                   <span className="flex-1 text-muted-foreground text-xs">
                     The "{d.gateway.server}" MCP server may be misconfigured or down.
@@ -400,8 +401,26 @@ function ToolCard({ message: m, fold }: { message: Extract<Message, { kind: "too
           )}
         </div>
       </details>
+      {needsSignIn && (
+        <div
+          data-testid="tool-needs-sign-in"
+          className="flex items-center gap-2 border-line border-t px-3.5 py-2"
+        >
+          <span className="flex-1 text-muted-foreground text-xs">
+            The "{d.gateway?.server}" MCP server needs sign-in.
+          </span>
+          <FixInSettingsLink hint="settings:mcp" />
+        </div>
+      )}
     </div>
   );
+}
+
+/** Whether the named upstream server (of a failed gateway call) currently waits for an OAuth sign-in. */
+function useServerNeedsSignIn(server: string | undefined): boolean {
+  const servers = useMcpServers();
+  if (!server) return false;
+  return servers.data?.find((s) => s.name === server)?.status.state === "needs_auth";
 }
 
 function Pre({ label, value }: { label: string; value: unknown }) {
