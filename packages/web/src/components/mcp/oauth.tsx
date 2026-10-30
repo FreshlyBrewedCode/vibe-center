@@ -59,7 +59,7 @@ export function McpOAuthStatus({ server: s }: { server: McpServerView }) {
       className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[10px] border border-line bg-panel px-3 py-2"
     >
       <KeyRound className="size-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1 text-xs">
+      <div className="min-w-48 flex-1 text-xs">
         {o.connected && !needsAuth ? (
           <>
             <p className="truncate">

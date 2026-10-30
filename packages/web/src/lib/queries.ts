@@ -278,11 +278,20 @@ export function useCancelLink() {
 export const useMcpServers = () =>
   useQuery({ queryKey: keys.mcpServers, queryFn: () => api.get<McpServersResponse>(mcpPaths.servers) });
 
+/**
+ * Apply a server from an HTTP response. Its status may already be stale: the connection's
+ * events (connecting, needs sign-in, …) can arrive over the socket before the response does, so
+ * a cached copy of the same config with a newer status check wins.
+ */
 function upsertServer(qc: QueryClient, server: McpServerView) {
+  const newer = (cached: McpServerView) =>
+    cached.updatedAt > server.updatedAt ||
+    (cached.updatedAt === server.updatedAt &&
+      (cached.status.checkedAt ?? 0) > (server.status.checkedAt ?? 0));
   qc.setQueryData<McpServersResponse>(keys.mcpServers, (list) =>
     list
       ? list.some((s) => s.id === server.id)
-        ? list.map((s) => (s.id === server.id ? server : s))
+        ? list.map((s) => (s.id === server.id && !newer(s) ? server : s))
         : [...list, server]
       : list,
   );
