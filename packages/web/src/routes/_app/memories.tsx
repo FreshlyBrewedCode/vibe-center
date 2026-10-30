@@ -4,6 +4,7 @@ import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { PageHeader } from "@/components/mobile-nav";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,71 +44,70 @@ function Memories() {
   const byId = new Map(agents.data?.map((a) => [a.id, a]));
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-4 p-6">
-        <div>
-          <h1 className="font-semibold text-xl">Memories</h1>
-          <p className="text-muted-foreground text-sm">
-            What agents remember across sessions, saved with their memory tools. Each agent sees its own
-            memories and the shared ones.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Select
-            value={scope || ALL}
-            onValueChange={(v) => navigate({ search: v === ALL ? {} : { scope: v } })}
-          >
-            <SelectTrigger aria-label="Whose memories" className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All memories</SelectItem>
-              <SelectItem value={SHARED}>Shared</SelectItem>
-              {agents.data?.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.avatar.emoji} {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="relative min-w-48 flex-1">
-            <Search className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-            <Input
-              aria-label="Search memories"
-              placeholder="Search"
-              className="pl-8"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+    <div className="vc-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl">
+        <PageHeader
+          title="Memories"
+          description="What agents remember across sessions, saved with their memory tools. Each agent sees its own memories and the shared ones."
+        />
+        <div className="space-y-4 px-3 pb-6 sm:px-8">
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={scope || ALL}
+              onValueChange={(v) => navigate({ search: v === ALL ? {} : { scope: v } })}
+            >
+              <SelectTrigger aria-label="Whose memories" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All memories</SelectItem>
+                <SelectItem value={SHARED}>Shared</SelectItem>
+                {agents.data?.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.avatar.emoji} {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="relative min-w-48 flex-1">
+              <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" />
+              <Input
+                aria-label="Search memories"
+                placeholder="Search"
+                className="pl-9"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <Button onClick={() => setAdding(true)} disabled={adding}>
+              <Plus className="size-4" /> Add
+            </Button>
           </div>
-          <Button onClick={() => setAdding(true)} disabled={adding}>
-            <Plus className="size-4" /> Add
-          </Button>
-        </div>
-        {adding && (
-          <MemoryEditor
-            initial={{ content: "", tags: [], agentId: scope && scope !== SHARED ? scope : null }}
-            agents={agents.data ?? []}
-            onDone={() => setAdding(false)}
-          />
-        )}
-        <ul className="space-y-2" data-testid="memories">
-          {memories.data?.map((m) => (
-            <MemoryItem
-              key={m.id}
-              memory={m}
-              owner={m.agentId ? byId.get(m.agentId) : undefined}
+          {adding && (
+            <MemoryEditor
+              initial={{ content: "", tags: [], agentId: scope && scope !== SHARED ? scope : null }}
               agents={agents.data ?? []}
+              onDone={() => setAdding(false)}
             />
-          ))}
-        </ul>
-        {memories.data?.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            {query
-              ? "No memories match."
-              : "No memories yet. Agents save them as they learn things about you."}
-          </p>
-        )}
+          )}
+          <ul className="space-y-2" data-testid="memories">
+            {memories.data?.map((m) => (
+              <MemoryItem
+                key={m.id}
+                memory={m}
+                owner={m.agentId ? byId.get(m.agentId) : undefined}
+                agents={agents.data ?? []}
+              />
+            ))}
+          </ul>
+          {memories.data?.length === 0 && (
+            <p className="rounded-xl border border-line border-dashed p-6 text-center text-muted-foreground text-sm">
+              {query
+                ? "No memories match."
+                : "No memories yet. Agents save them as they learn things about you."}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -126,15 +126,15 @@ function MemoryItem({
   const [editing, setEditing] = useState(false);
   if (editing) return <MemoryEditor id={m.id} initial={m} agents={agents} onDone={() => setEditing(false)} />;
   return (
-    <li data-testid="memory" className="group space-y-1.5 rounded-lg border p-3">
-      <p className="whitespace-pre-wrap text-sm">{m.content}</p>
+    <li data-testid="memory" className="group space-y-2 rounded-xl border border-line bg-card p-4">
+      <p className="whitespace-pre-wrap text-sm leading-[1.55]">{m.content}</p>
       <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
         {owner ? (
-          <span className="flex items-center gap-1">
-            <AgentAvatar avatar={owner.avatar} size={16} /> {owner.name}
+          <span className="flex items-center gap-1.5">
+            <AgentAvatar avatar={owner.avatar} size={18} /> {owner.name}
           </span>
         ) : (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1.5">
             <Users className="size-3.5" /> Shared
           </span>
         )}
@@ -143,20 +143,16 @@ function MemoryItem({
             {t}
           </Badge>
         ))}
-        <time>{new Date(m.updatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</time>
+        <time className="tabular-nums">
+          {new Date(m.updatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+        </time>
         <span className="flex-1" />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          aria-label="Edit memory"
-          onClick={() => setEditing(true)}
-        >
+        <Button size="icon-sm" variant="quiet" aria-label="Edit memory" onClick={() => setEditing(true)}>
           <Pencil className="size-3.5" />
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-7" aria-label="Delete memory">
+            <Button size="icon-sm" variant="quiet" aria-label="Delete memory">
               <Trash2 className="size-3.5" />
             </Button>
           </AlertDialogTrigger>
@@ -206,7 +202,7 @@ function MemoryEditor({
     save.mutate({ id, body }, { onSuccess: onDone, onError: (err) => toast.error(err.message) });
   };
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-lg border p-3">
+    <form onSubmit={submit} className="space-y-3 rounded-xl border border-line-strong bg-card p-4">
       <Textarea
         aria-label="Memory"
         required

@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useDeleteMcpServer, useMcpServers, useRefreshMcpServer, useSaveMcpServer } from "@/lib/queries";
-import { Section } from "../settings";
+import { Card, Section } from "../settings";
 
 export const Route = createFileRoute("/_app/settings/mcp")({ component: McpServers });
 
@@ -28,18 +28,18 @@ function McpServers() {
   const servers = useMcpServers();
   const [adding, setAdding] = useState(false);
   return (
-    <Section title="MCP servers">
-      <p className="text-muted-foreground text-sm">
-        Every agent reaches these through the app's MCP gateway. Choose which tools each agent gets in its
-        settings (Edit agent → Tools). Built-in tools are on for every agent by default; tools from servers
-        you add here are off until you enable them for an agent.
-      </p>
-      <ul className="divide-y rounded-lg border">
-        {servers.data?.map((s) => (
-          <ServerRow key={s.id} server={s} />
-        ))}
-      </ul>
-      <Button onClick={() => setAdding(true)}>
+    <Section
+      title="MCP servers"
+      description="Every agent reaches these through the app's MCP gateway. Choose which tools each agent gets in its settings (Edit agent → Tools). Built-in tools are on for every agent by default; tools from servers you add here are off until you enable them for an agent."
+    >
+      <Card>
+        <ul className="divide-y divide-line">
+          {servers.data?.map((s) => (
+            <ServerRow key={s.id} server={s} />
+          ))}
+        </ul>
+      </Card>
+      <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
         <Plus className="size-4" /> Add MCP server
       </Button>
       {adding && <McpServerDialog open onOpenChange={setAdding} />}
@@ -58,7 +58,7 @@ function ServerRow({ server: s }: { server: McpServerView }) {
       ? [s.command, ...s.args].join(" ")
       : s.url;
   return (
-    <li data-testid={`mcp-server-${s.name}`} className="space-y-1.5 p-3">
+    <li data-testid={`mcp-server-${s.name}`} className="space-y-1.5 p-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-sm">{s.builtin ? "Built-in" : s.name}</span>
         <Badge variant="outline">{s.builtin ? "built-in" : s.transport}</Badge>
@@ -76,7 +76,7 @@ function ServerRow({ server: s }: { server: McpServerView }) {
             />
             <Button
               size="sm"
-              variant="ghost"
+              variant="quiet"
               disabled={refresh.isPending || !s.enabled}
               onClick={() =>
                 refresh.mutate(s.id, {
@@ -91,8 +91,8 @@ function ServerRow({ server: s }: { server: McpServerView }) {
               <RefreshCw className={refresh.isPending ? "size-3.5 animate-spin" : "size-3.5"} /> Refresh
             </Button>
             <Button
-              size="icon"
-              variant="ghost"
+              size="icon-sm"
+              variant="quiet"
               aria-label={`Edit ${s.name}`}
               onClick={() => setEditing(true)}
             >
@@ -100,7 +100,7 @@ function ServerRow({ server: s }: { server: McpServerView }) {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost" aria-label={`Remove ${s.name}`}>
+                <Button size="icon-sm" variant="quiet" aria-label={`Remove ${s.name}`}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </AlertDialogTrigger>
@@ -122,19 +122,19 @@ function ServerRow({ server: s }: { server: McpServerView }) {
           </>
         )}
       </div>
-      <code className="block truncate text-muted-foreground text-xs">{endpoint}</code>
+      <code className="block truncate font-mono text-muted-foreground text-xs">{endpoint}</code>
       {Object.keys(s.env).length + Object.keys(s.headers).length > 0 && (
         <p className="text-muted-foreground text-xs">
           Secrets: {[...Object.keys(s.env), ...Object.keys(s.headers)].join(", ")}
         </p>
       )}
       {s.status.state === "error" && s.status.message && (
-        <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-destructive/10 p-2 text-destructive text-xs">
+        <pre className="vc-scroll max-h-32 overflow-auto whitespace-pre-wrap rounded-[8px] border border-destructive/30 bg-destructive/8 px-3 py-2 font-mono text-destructive text-xs">
           {s.status.message}
         </pre>
       )}
       <details className="group text-sm">
-        <summary className="flex cursor-pointer list-none items-center gap-1 text-muted-foreground text-xs">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-muted-foreground text-xs [&::-webkit-details-marker]:hidden">
           <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
           {s.tools.length} tools
           {s.status.serverInfo &&
@@ -144,7 +144,7 @@ function ServerRow({ server: s }: { server: McpServerView }) {
         <ul className="mt-1.5 space-y-1 pl-5">
           {s.tools.map((t) => (
             <li key={t.name} className="text-xs">
-              <code className="font-medium">{t.name}</code>
+              <code className="font-medium font-mono">{t.name}</code>
               {t.description && (
                 <span className="text-muted-foreground"> · {t.description.split("\n")[0]}</span>
               )}

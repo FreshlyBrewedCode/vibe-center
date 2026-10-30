@@ -89,7 +89,7 @@ function AddDeviceBody() {
   return (
     <div className="space-y-4">
       {paired ? (
-        <div className="rounded-lg border bg-muted/30 p-6 text-center">
+        <div className="rounded-xl border border-presence-working/30 bg-presence-working/8 p-6 text-center">
           <div className="font-medium">Paired: {paired}</div>
           <p className="mt-1 text-muted-foreground text-sm">The new device is signed in.</p>
         </div>
@@ -97,7 +97,7 @@ function AddDeviceBody() {
         <>
           {/* Fixed white, not a theme token: scanners need a light quiet zone around the code,
               in light or dark mode, matching the SVG's own black-on-white rendering. */}
-          <div className="flex justify-center rounded-lg border bg-white p-4">
+          <div className="flex justify-center rounded-xl border border-line bg-white p-4">
             <QRCode value={link.url} size={192} level="M" />
           </div>
           <div className="flex items-center gap-2">

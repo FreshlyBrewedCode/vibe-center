@@ -11,7 +11,13 @@ const labels: Record<McpServerStatus["state"], string> = {
 
 export function McpStatusBadge({ status }: { status: McpServerStatus }) {
   const variant =
-    status.state === "connected" ? "secondary" : status.state === "error" ? "destructive" : "outline";
+    status.state === "connected"
+      ? "ok"
+      : status.state === "error"
+        ? "destructive"
+        : status.state === "connecting"
+          ? "warn"
+          : "outline";
   return (
     <Badge variant={variant} title={status.message ?? undefined} data-testid="mcp-status">
       {labels[status.state]}

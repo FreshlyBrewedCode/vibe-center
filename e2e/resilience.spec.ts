@@ -38,7 +38,7 @@ async function controllableSockets(context: BrowserContext) {
 
 async function setup(page: Page): Promise<AgentView> {
   await page.goto(mintLink());
-  await expect(page.getByRole("button", { name: "Open agent list" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
   const harness = (await (
     await page.request.post("/api/harnesses", { data: { name: "Fake", command: "bun", args: [FAKE_AGENT] } })
   ).json()) as Harness;
@@ -78,7 +78,7 @@ test("phone: the headers and the composer stay in view while the messages scroll
   const inView = async () => {
     const vh = await page.evaluate(() => innerHeight);
     for (const el of [
-      page.getByRole("button", { name: "Open agent list" }),
+      page.getByRole("link", { name: "Back to agents" }),
       page.getByRole("button", { name: "Agent details" }),
       page.getByLabel("Message", { exact: true }),
     ]) {
@@ -126,7 +126,7 @@ test("screen off: a frozen tab whose socket died shows what it missed when it co
   await comeBack(page);
   await expect(page.getByTestId("permission")).toContainText("Run rm -rf build", { timeout: 10_000 });
   await expect(page.getByTestId("message-user").filter({ hasText: "while you were away" })).toBeVisible();
-  await expect(page.getByTestId("mobile-presence")).toContainText("Needs approval");
+  await expect(page.getByTestId("presence")).toContainText("Needs approval");
   expect(sockets.opened).toBe(before + 1); // reconnected once, didn't reload
   expect(await notReloaded(page)).toBe(true);
 

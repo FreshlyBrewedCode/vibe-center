@@ -10,7 +10,8 @@ export function GatewayCallDetails({ call }: { call: GatewayCallInfo }) {
   return (
     <div data-testid="gateway-call" className="space-y-2">
       <p className="text-muted-foreground text-xs">
-        via MCP gateway · {call.server === "builtin" ? "built-in" : call.server} · <code>{call.tool}</code>
+        via MCP gateway · {call.server === "builtin" ? "built-in" : call.server} ·{" "}
+        <code className="font-mono">{call.tool}</code>
         {call.durationMs !== null && ` · ${call.durationMs} ms`}
       </p>
       <Block label="Arguments" value={call.args} />
@@ -33,8 +34,8 @@ function Block({ label, value }: { label: string; value: unknown }) {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
     <div className="space-y-1">
-      <div className="text-muted-foreground text-xs">{label}</div>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">
+      <div className="vc-label">{label}</div>
+      <pre className="vc-scroll max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-[8px] bg-background px-3 py-2 font-mono text-xs leading-[1.5]">
         {text}
       </pre>
     </div>

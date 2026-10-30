@@ -11,6 +11,7 @@ import {
 import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/mobile-nav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -116,122 +117,126 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
   };
 
   return (
-    <form onSubmit={submit} className="mx-auto w-full max-w-2xl space-y-8 p-6">
-      <h1 className="font-semibold text-xl">{agent ? `Edit ${agent.name}` : "New agent"}</h1>
-
-      <FormSection title="Profile">
-        <div className="flex gap-3">
-          <Field label="Emoji" className="w-20">
-            <Input
-              value={form.avatar.emoji}
-              maxLength={16}
-              onChange={(e) => set({ avatar: { ...form.avatar, emoji: e.target.value } })}
-            />
-          </Field>
-          <Field label="Color" className="w-20">
-            <Input
-              type="color"
-              value={form.avatar.color}
-              className="p-1"
-              onChange={(e) => set({ avatar: { ...form.avatar, color: e.target.value } })}
-            />
-          </Field>
-          <Field label="Name" className="flex-1">
-            <Input required value={form.name} onChange={(e) => set({ name: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Description">
-          <Input value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
-        </Field>
-      </FormSection>
-
-      <FormSection title="Behaviour">
-        <Field label="System prompt" hint="Appended to the harness's own prompt where the harness allows it.">
-          <Textarea
-            rows={8}
-            className="font-mono text-sm"
-            value={form.systemPrompt ?? ""}
-            onChange={(e) => set({ systemPrompt: e.target.value })}
-          />
-        </Field>
-      </FormSection>
-
-      <FormSection title="Harness and model">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Harness">
-            <Select
-              value={form.harnessId}
-              onValueChange={(v) => set({ harnessId: v, model: null, options: {} })}
-            >
-              <SelectTrigger aria-label="Harness" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {harnesses.data?.map((h) => (
-                  <SelectItem key={h.id} value={h.id}>
-                    {h.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {harness && (
-              <HarnessStatusLine
-                harness={harness}
-                onProbe={() => probe.mutate({ id: harness.id })}
-                probing={probe.isPending}
-              />
-            )}
-          </Field>
-          <Field label="Model">
-            {modelOption?.type === "select" ? (
-              <OptionSelect
-                option={modelOption}
-                value={form.model ?? null}
-                onChange={(v) => set({ model: v })}
-                label="Model"
-              />
-            ) : (
+    <form onSubmit={submit} className="mx-auto w-full max-w-2xl">
+      <PageHeader title={agent ? `Edit ${agent.name}` : "New agent"} backTo="/" className="sm:pb-5" />
+      <div className="space-y-8 px-3 pb-6 sm:px-8">
+        <FormSection title="Profile">
+          <div className="flex gap-3">
+            <Field label="Emoji" className="w-20">
               <Input
-                placeholder="Harness default"
-                value={form.model ?? ""}
-                onChange={(e) => set({ model: e.target.value.trim() || null })}
+                value={form.avatar.emoji}
+                maxLength={16}
+                onChange={(e) => set({ avatar: { ...form.avatar, emoji: e.target.value } })}
               />
-            )}
-          </Field>
-        </div>
-        {otherOptions.length > 0 && (
-          <div className="grid gap-5 sm:grid-cols-2">
-            {otherOptions.map((o) => (
-              <Field key={o.id} label={o.name} hint={o.description ?? undefined}>
-                <ConfigOptionInput
-                  option={o}
-                  values={form.options ?? {}}
-                  onChange={(options) => set({ options })}
-                />
-              </Field>
-            ))}
+            </Field>
+            <Field label="Color" className="w-20">
+              <Input
+                type="color"
+                value={form.avatar.color}
+                className="cursor-pointer p-1"
+                onChange={(e) => set({ avatar: { ...form.avatar, color: e.target.value } })}
+              />
+            </Field>
+            <Field label="Name" className="flex-1">
+              <Input required value={form.name} onChange={(e) => set({ name: e.target.value })} />
+            </Field>
           </div>
-        )}
-        <Field label="Working directory" hint="Absolute path on the server; ~ is your home directory.">
-          <Input required value={form.cwd} onChange={(e) => set({ cwd: e.target.value })} />
-        </Field>
-      </FormSection>
+          <Field label="Description">
+            <Input value={form.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
+          </Field>
+        </FormSection>
 
-      <FormSection title="Voice">
-        <div>
-          <Label className="mb-1.5 block">Voice</Label>
-          <VoicePicker value={form.voice ?? null} onChange={(voice) => set({ voice })} />
-          <p className="mt-1 text-muted-foreground text-xs">How the agent sounds on calls.</p>
+        <FormSection title="Behaviour">
+          <Field
+            label="System prompt"
+            hint="Appended to the harness's own prompt where the harness allows it."
+          >
+            <Textarea
+              rows={8}
+              className="font-mono text-xs leading-[1.55] sm:text-xs"
+              value={form.systemPrompt ?? ""}
+              onChange={(e) => set({ systemPrompt: e.target.value })}
+            />
+          </Field>
+        </FormSection>
+
+        <FormSection title="Harness and model">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Harness">
+              <Select
+                value={form.harnessId}
+                onValueChange={(v) => set({ harnessId: v, model: null, options: {} })}
+              >
+                <SelectTrigger aria-label="Harness" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {harnesses.data?.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {harness && (
+                <HarnessStatusLine
+                  harness={harness}
+                  onProbe={() => probe.mutate({ id: harness.id })}
+                  probing={probe.isPending}
+                />
+              )}
+            </Field>
+            <Field label="Model">
+              {modelOption?.type === "select" ? (
+                <OptionSelect
+                  option={modelOption}
+                  value={form.model ?? null}
+                  onChange={(v) => set({ model: v })}
+                  label="Model"
+                />
+              ) : (
+                <Input
+                  placeholder="Harness default"
+                  value={form.model ?? ""}
+                  onChange={(e) => set({ model: e.target.value.trim() || null })}
+                />
+              )}
+            </Field>
+          </div>
+          {otherOptions.length > 0 && (
+            <div className="grid gap-5 sm:grid-cols-2">
+              {otherOptions.map((o) => (
+                <Field key={o.id} label={o.name} hint={o.description ?? undefined}>
+                  <ConfigOptionInput
+                    option={o}
+                    values={form.options ?? {}}
+                    onChange={(options) => set({ options })}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
+          <Field label="Working directory" hint="Absolute path on the server; ~ is your home directory.">
+            <Input required value={form.cwd} onChange={(e) => set({ cwd: e.target.value })} />
+          </Field>
+        </FormSection>
+
+        <FormSection title="Voice">
+          <div>
+            <Label className="mb-1.5 block">Voice</Label>
+            <VoicePicker value={form.voice ?? null} onChange={(voice) => set({ voice })} />
+            <p className="mt-1 text-muted-foreground text-xs">How the agent sounds on calls.</p>
+          </div>
+        </FormSection>
+
+        <div className="flex gap-2">
+          <Button type="submit" disabled={save.isPending}>
+            {agent ? "Save" : "Create agent"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => history.back()}>
+            Cancel
+          </Button>
         </div>
-      </FormSection>
-
-      <div className="flex gap-2">
-        <Button type="submit" disabled={save.isPending}>
-          {agent ? "Save" : "Create agent"}
-        </Button>
-        <Button type="button" variant="ghost" onClick={() => history.back()}>
-          Cancel
-        </Button>
       </div>
     </form>
   );
@@ -240,7 +245,7 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-4">
-      <h2 className="border-b pb-1.5 font-medium text-sm">{title}</h2>
+      <h2 className="vc-label border-line border-b pb-2">{title}</h2>
       {children}
     </section>
   );
@@ -281,14 +286,7 @@ function HarnessStatusLine({
     <div className="mt-1.5 flex items-center gap-2 text-xs">
       <HealthBadge health={harness.health} />
       {!harness.probe && <span className="text-muted-foreground">Not probed yet, models unknown.</span>}
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-6 px-2"
-        disabled={probing}
-        onClick={onProbe}
-      >
+      <Button type="button" size="xs" variant="quiet" disabled={probing} onClick={onProbe}>
         <RefreshCw className={probing ? "size-3 animate-spin" : "size-3"} /> Check
       </Button>
     </div>

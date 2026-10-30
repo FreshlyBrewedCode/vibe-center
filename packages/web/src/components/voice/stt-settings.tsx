@@ -49,7 +49,7 @@ function Meter({ label, level, detail }: { label: string; level: number | null; 
             <span
               key={i}
               aria-hidden
-              className={`h-2 w-2 rounded-full ${i <= level ? "bg-foreground" : "bg-muted"}`}
+              className={`h-2 w-2 rounded-full ${i <= level ? "bg-foreground" : "bg-line-strong"}`}
             />
           ))}
           <span className="sr-only">{level} of 5</span>
@@ -78,7 +78,10 @@ export function SttModels() {
   if (!d) return <p className="text-muted-foreground text-xs">Checking the STT server…</p>;
   if (!d.reachable)
     return (
-      <div className="rounded-lg border border-dashed p-3 text-sm" data-testid="stt-models-offline">
+      <div
+        className="rounded-xl border border-line border-dashed p-4 text-sm"
+        data-testid="stt-models-offline"
+      >
         <p>{d.message}</p>
         <p className="mt-1 text-muted-foreground text-xs">
           Models are listed, downloaded and switched on the STT server ({d.url || "not set"}). Start it (GPU
@@ -87,7 +90,7 @@ export function SttModels() {
       </div>
     );
   return (
-    <ul className="divide-y rounded-lg border" data-testid="stt-models">
+    <ul className="divide-y divide-line rounded-xl border border-line bg-card" data-testid="stt-models">
       {d.models.map((m) => (
         <SttModelRow key={m.id} m={m} list={d} busy={act.isPending} run={run} />
       ))}
@@ -109,12 +112,12 @@ function SttModelRow({
   const p = m.progress;
   const switching = list.loading !== null;
   return (
-    <li className="space-y-2 p-3" data-testid={`stt-model-${m.id}`} data-status={m.status}>
+    <li className="space-y-2 p-4" data-testid={`stt-model-${m.id}`} data-status={m.status}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-sm">{m.name}</span>
-        {m.recommended && <Badge variant="secondary">Recommended</Badge>}
+        {m.recommended && <Badge variant="outline">Recommended</Badge>}
         {m.status === "active" && (
-          <Badge>
+          <Badge variant="ok">
             <Check className="size-3" /> In use
           </Badge>
         )}
@@ -130,7 +133,7 @@ function SttModelRow({
           </Button>
         )}
         {m.status === "downloading" && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(m.id, "cancel")}>
+          <Button size="sm" variant="quiet" disabled={busy} onClick={() => run(m.id, "cancel")}>
             <X className="size-3.5" /> Cancel
           </Button>
         )}
@@ -141,7 +144,7 @@ function SttModelRow({
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost" className="size-8" aria-label={`Delete ${m.name}`}>
+                <Button size="icon-sm" variant="quiet" aria-label={`Delete ${m.name}`}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </AlertDialogTrigger>
@@ -327,7 +330,7 @@ export function TurnRecordings({
   const clear = useClearRecordings();
   const items = recordings.data?.recordings ?? [];
   return (
-    <div className="space-y-3 rounded-lg border p-3">
+    <div className="space-y-3 rounded-xl border border-line bg-card p-4">
       <div className="flex items-start gap-3">
         <Switch
           id="voice-record"
@@ -381,9 +384,12 @@ export function TurnRecordings({
         </p>
       )}
       {items.length > 0 && (
-        <ul className="max-h-80 divide-y overflow-auto rounded border" data-testid="turn-recordings">
+        <ul
+          className="vc-scroll max-h-80 divide-y divide-line overflow-auto rounded-lg border border-line bg-background"
+          data-testid="turn-recordings"
+        >
           {items.map((r) => (
-            <li key={r.id} className="space-y-1 p-2">
+            <li key={r.id} className="space-y-1 p-2.5">
               <div className="flex flex-wrap items-baseline gap-2 text-xs">
                 <span className="text-muted-foreground">
                   {new Date(r.at).toLocaleString()} · {r.duration.toFixed(1)} s · {r.stt}

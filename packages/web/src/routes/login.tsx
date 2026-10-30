@@ -39,16 +39,22 @@ function Login() {
   return <SignInMessage title={error ? "Couldn't sign in" : "Signing in…"} detail={error} />;
 }
 
+/** The signed-out / expired-link screen: a quiet card with the one thing to do. */
 export function SignInMessage({ title, detail }: { title: string; detail?: string | null }) {
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <div className="max-w-md space-y-3 text-center">
-        <div className="text-4xl">🎛️</div>
-        <h1 className="font-semibold text-xl">{title}</h1>
-        {detail && <p className="text-muted-foreground text-sm">{detail}</p>}
-        <p className="text-muted-foreground text-sm">
-          Run <code className="rounded bg-muted px-1.5 py-0.5">vibe-center link</code> on the server and open
-          the link it prints on this device.
+      <div className="flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl border border-line bg-card px-8 py-10 text-center">
+        <span className="flex size-12 items-center justify-center rounded-[14px] border border-line-strong bg-background font-semibold text-xl tracking-tight">
+          V
+        </span>
+        <div className="space-y-1.5">
+          <h1 className="font-semibold text-xl tracking-tight">{title}</h1>
+          {detail && <p className="text-destructive text-sm">{detail}</p>}
+        </div>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          Run <code className="rounded-[6px] bg-muted px-1.5 py-0.5 font-mono text-xs">vibe-center link</code>{" "}
+          on the server and open the link it prints on this device. Links work once and expire after ten
+          minutes.
         </p>
       </div>
     </div>

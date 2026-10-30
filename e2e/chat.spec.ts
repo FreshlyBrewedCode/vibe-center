@@ -84,7 +84,7 @@ test("sign in, create an agent, chat with streaming, stop, permissions, new sess
   await page.getByRole("link", { name: "Harnesses" }).click();
   await expect(page.getByTestId(`harness-${harness.id}`).getByTestId("health")).toHaveText("Working");
   await page.getByRole("link", { name: "Devices" }).click();
-  await expect(page.getByText("(this device)")).toBeVisible();
+  await expect(page.getByText("this device", { exact: true })).toBeVisible();
 });
 
 test("a cached probe error shows the banner but doesn't lock the composer", async ({ page }) => {

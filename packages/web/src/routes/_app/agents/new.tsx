@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_app/agents/new")({ component: NewAgent }
 function NewAgent() {
   const [template, setTemplate] = useState<AgentTemplate | null>(null);
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="vc-scroll min-h-0 flex-1 overflow-y-auto">
       {template ? <AgentForm template={template} /> : <TemplatePicker onPick={setTemplate} />}
     </div>
   );

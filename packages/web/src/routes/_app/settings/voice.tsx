@@ -17,7 +17,7 @@ import {
   useVoiceSettings,
   useVoiceStatus,
 } from "@/lib/queries";
-import { Section } from "../settings";
+import { Card, Section } from "../settings";
 
 export const Route = createFileRoute("/_app/settings/voice")({ component: Voice });
 
@@ -33,10 +33,12 @@ function ServiceBadge({ health, testId }: { health: ServiceHealth | undefined; t
   if (!health) return <Badge variant="outline">Checking…</Badge>;
   const variant =
     health.state === "ok"
-      ? "secondary"
+      ? "ok"
       : health.state === "error" || health.state === "down"
         ? "destructive"
-        : "outline";
+        : health.state === "starting"
+          ? "warn"
+          : "outline";
   return (
     <Badge
       variant={variant}
@@ -84,14 +86,14 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
   return (
     <div className="space-y-8">
       <Section title="Voice worker">
-        <div className="space-y-3 rounded-lg border p-3">
+        <Card className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-sm">Worker</span>
             <ServiceBadge health={s?.worker} testId="voice-worker-health" />
             {s?.worker.message && <span className="text-muted-foreground text-xs">{s.worker.message}</span>}
             <span className="flex-1" />
             {settings.workerMode === "managed" && (
-              <Button size="sm" variant="ghost" disabled={restart.isPending} onClick={() => restart.mutate()}>
+              <Button size="sm" variant="quiet" disabled={restart.isPending} onClick={() => restart.mutate()}>
                 <RotateCw className="size-3.5" /> Restart
               </Button>
             )}
@@ -148,17 +150,19 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
           )}
           {settings.workerMode === "managed" && s?.worker.logTail.length ? (
             <details>
-              <summary className="cursor-pointer text-muted-foreground text-xs">Worker log</summary>
-              <pre className="mt-2 max-h-64 overflow-auto rounded bg-muted p-2 text-[11px] leading-snug">
+              <summary className="cursor-pointer text-muted-foreground text-xs [&::-webkit-details-marker]:hidden">
+                Worker log
+              </summary>
+              <pre className="vc-scroll mt-2 max-h-64 overflow-auto rounded-[8px] bg-background px-3 py-2 font-mono text-[11px] leading-snug">
                 {s.worker.logTail.slice(-60).join("\n")}
               </pre>
             </details>
           ) : null}
-        </div>
+        </Card>
       </Section>
 
       <Section title="Speech">
-        <div className="space-y-3 rounded-lg border p-3">
+        <Card className="space-y-3 p-4">
           <p className="text-muted-foreground text-xs">
             OpenAI-compatible servers. Defaults are the GPU servers on km-pc through the tunnels that{" "}
             <code>speech.sh up</code> opens. Leave a field empty, or let the server be offline, and the worker
@@ -198,7 +202,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
             </Button>
           </div>
           {s?.gpuSpeech.available && (
-            <div className="space-y-2 border-t pt-3">
+            <div className="space-y-2 border-line border-t pt-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Cpu className="size-4 text-muted-foreground" />
                 <span className="font-medium text-sm">GPU speech on km-pc</span>
@@ -218,7 +222,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={!!s.gpuSpeech.running || gpu.isPending}
                   onClick={() => gpu.mutate("status", { onError: (e) => toast.error(e.message) })}
                 >
@@ -226,7 +230,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="quiet"
                   disabled={!!s.gpuSpeech.running || gpu.isPending}
                   onClick={() => gpu.mutate("down", { onError: (e) => toast.error(e.message) })}
                 >
@@ -239,7 +243,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
                 Stopping leaves km-pc awake: run <code>gpu sleep</code> when nothing else needs it.
               </p>
               {s.gpuSpeech.lastOutput && (
-                <pre className="max-h-48 overflow-auto rounded bg-muted p-2 text-[11px] leading-snug">
+                <pre className="vc-scroll max-h-48 overflow-auto rounded-[8px] bg-background px-3 py-2 font-mono text-[11px] leading-snug">
                   {`$ speech.sh ${s.gpuSpeech.running ?? s.gpuSpeech.lastAction ?? ""}${
                     s.gpuSpeech.lastExitCode !== null && !s.gpuSpeech.running
                       ? `  (exit ${s.gpuSpeech.lastExitCode})`
@@ -249,7 +253,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
               )}
             </div>
           )}
-        </div>
+        </Card>
       </Section>
 
       <Section title="Speech-to-text model">
@@ -259,14 +263,14 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
           this project's evaluation set.
         </p>
         <SttModels />
-        <div className="space-y-4 rounded-lg border p-3">
+        <Card className="space-y-4 p-4">
           <SttLanguage settings={settings} patch={patch} />
           <SttVocabulary settings={settings} patch={patch} saving={save.isPending} />
-        </div>
+        </Card>
       </Section>
 
       <Section title="Calls">
-        <div className="flex items-start gap-3 rounded-lg border p-3">
+        <Card className="flex items-start gap-3 p-4">
           <Switch
             id="voice-filler"
             checked={settings.filler}
@@ -280,7 +284,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
               of your turn is silent either way.
             </span>
           </Label>
-        </div>
+        </Card>
         <p className="text-muted-foreground text-xs">
           Each agent's voice is set in its editor. Use a headset: with laptop speakers the agent's voice can
           interrupt itself.

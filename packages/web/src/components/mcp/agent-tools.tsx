@@ -17,18 +17,21 @@ export function AgentTools({ agentId }: { agentId: string }) {
   const toggle = (serverId: string, enabled: boolean, tool?: string) =>
     set.mutate({ serverId, tool, enabled }, { onError: (e) => toast.error(e.message) });
   return (
-    <section className="mx-auto w-full max-w-2xl space-y-3 px-6 pb-6" data-testid="agent-tools">
-      <div>
-        <h2 className="font-semibold text-lg">Tools</h2>
-        <p className="text-muted-foreground text-xs">
+    <section className="mx-auto w-full max-w-2xl space-y-3 px-4 pb-6 sm:px-8" data-testid="agent-tools">
+      <div className="border-line border-b pb-2">
+        <h2 className="font-semibold text-sm">Tools</h2>
+        <p className="mt-0.5 text-muted-foreground text-xs">
           Changes apply right away, also to a running session. New tools a server adds later follow its
           switch.{" "}
-          <Link to="/settings/mcp" className="underline">
+          <Link
+            to="/settings/mcp"
+            className="underline decoration-line-strong underline-offset-2 hover:decoration-foreground"
+          >
             Manage MCP servers
           </Link>
         </p>
       </div>
-      <ul className="divide-y rounded-lg border">
+      <ul className="divide-y divide-line rounded-xl border border-line bg-card">
         {groups.data?.map((g) => (
           <Group key={g.serverId} group={g} pending={set.isPending} onToggle={toggle} />
         ))}
@@ -50,7 +53,7 @@ function Group({
   const on = g.tools.filter((t) => t.enabled).length;
   const label = g.builtin ? "Built-in" : g.serverName;
   return (
-    <li data-testid={`tool-group-${g.serverName}`} className="p-3">
+    <li data-testid={`tool-group-${g.serverName}`} className="p-3.5">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -80,7 +83,7 @@ function Group({
           {g.tools.map((t) => (
             <li key={t.name} className="flex items-start gap-2">
               <div className="min-w-0 flex-1">
-                <code className="text-xs">{t.exposedName}</code>
+                <code className="font-mono text-xs">{t.exposedName}</code>
                 {t.description && (
                   <p className="truncate text-muted-foreground text-xs" title={t.description}>
                     {t.description.split("\n")[0]}

@@ -304,15 +304,16 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
   fetch: Globe,
   think: Brain,
 };
-const TOOL_VERBS: Record<string, string> = {
-  read: "Read",
-  edit: "Edited",
-  delete: "Deleted",
-  move: "Moved",
-  search: "Searched",
-  execute: "Ran",
-  fetch: "Fetched",
-  think: "Thought",
+/** [done, in progress] verbs per tool kind: "Edited …" once completed, "Editing …" while it runs. */
+const TOOL_VERBS: Record<string, [string, string]> = {
+  read: ["Read", "Reading"],
+  edit: ["Edited", "Editing"],
+  delete: ["Deleted", "Deleting"],
+  move: ["Moved", "Moving"],
+  search: ["Searched", "Searching"],
+  execute: ["Ran", "Running"],
+  fetch: ["Fetched", "Fetching"],
+  think: ["Thought", "Thinking"],
 };
 /** Verbs harnesses already put in front of a title ("Read README.md", "Run: ls"); not repeated. */
 const LEADING_VERB = /^(read|edit|edited|run|ran|execute|fetch|search|delete|move|write|grep|bash)\b[:\s]+/i;
@@ -320,7 +321,10 @@ const LEADING_VERB = /^(read|edit|edited|run|ran|execute|fetch|search|delete|mov
 function ToolCard({ message: m, fold }: { message: Extract<Message, { kind: "tool_call" }>; fold: Fold }) {
   const d = m.data;
   const Icon = (d.toolKind && TOOL_ICONS[d.toolKind]) || (d.gateway ? Plug : Wrench);
-  const verb = d.gateway ? "Called" : (d.toolKind && TOOL_VERBS[d.toolKind]) || "Used";
+  const done = d.toolStatus === "completed" || d.toolStatus === "failed";
+  const verbs =
+    (d.toolKind && TOOL_VERBS[d.toolKind]) || (d.gateway ? ["Called", "Calling"] : ["Used", "Using"]);
+  const verb = verbs[done ? 0 : 1];
   const title = d.gateway ? gatewayTitle(d.gateway) : d.title.replace(LEADING_VERB, "");
   const status =
     d.toolStatus === "completed" ? (

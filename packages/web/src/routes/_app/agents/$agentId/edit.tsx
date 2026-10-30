@@ -25,13 +25,13 @@ function EditAgent() {
   const navigate = useNavigate();
   if (!agent) return null;
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="vc-scroll min-h-0 flex-1 overflow-y-auto">
       <AgentForm key={agent.id} agent={agent} />
       <AgentTools agentId={agent.id} />
-      <div className="mx-auto max-w-2xl px-6 pb-10">
+      <div className="mx-auto max-w-2xl px-3 pb-10 sm:px-8">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline" className="text-destructive">
+            <Button variant="outline" className="text-destructive hover:text-destructive">
               Delete agent
             </Button>
           </AlertDialogTrigger>

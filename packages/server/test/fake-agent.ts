@@ -5,7 +5,10 @@
 //   (default)    streams "Echo: <prompt>" in a few chunks
 //   slow         streams 40 chunks, 100 ms apart (for cancel tests)
 //   tool         a tool call (pending → in_progress → completed), then text
-//   permission   a tool call that asks for permission; replies with the outcome
+//   permission   a tool call that asks for permission (the command in `backticks` if the prompt
+//                has one, else `rm -rf build`); replies with the outcome
+//   edits        a run of three tool calls (two edits, one command with output), then a reply
+//                with a code block; "edits slowly" leaves the last call running for 2 minutes
 //   thought      a thought chunk, then text
 //   plan         a plan update, then text
 //   hang         never answers and ignores session/cancel (like OpenCode on provider errors)
@@ -187,8 +190,15 @@ const app = acp
     const ac = new AbortController();
     running.set(sessionId, ac);
     const signal = ac.signal;
+    // The voice-mode note and the "message from another agent" note are left out of the echo.
     const text = params.prompt
-      .filter((b) => !(b.type === "text" && b.text.startsWith("<voice-call>")))
+      .filter(
+        (b) =>
+          !(
+            b.type === "text" &&
+            (b.text.startsWith("<voice-call>") || b.text.startsWith("[Message from the agent"))
+          ),
+      )
       .map((b) => (b.type === "text" ? b.text : `[${b.type}]`))
       .join("\n");
     const lower = text.toLowerCase();
@@ -270,6 +280,57 @@ const app = acp
         await say(`This session has seen ${s.prompts} prompts.`, 1);
         return stop();
       }
+      if (lower.includes("edits")) {
+        // A run of consecutive tool calls (the DM folds them into one activity card), the last one
+        // left running for a while when the prompt also says "slowly" (presence "working"). Before
+        // `slow`, which "slowly" would otherwise match.
+        await say("Taking the sidebar bug.", 1);
+        const calls: { id: string; title: string; kind: acp.ToolKind; input: unknown; out?: string }[] = [
+          {
+            id: "edit-1",
+            title: "packages/web/src/components/sidebar.tsx",
+            kind: "edit",
+            input: { path: "packages/web/src/components/sidebar.tsx", old: "w-64", new: "w-16" },
+          },
+          {
+            id: "edit-2",
+            title: "packages/web/src/lib/sidebar.ts",
+            kind: "edit",
+            input: { path: "packages/web/src/lib/sidebar.ts" },
+          },
+          {
+            id: "run-1",
+            title: "bun run check",
+            kind: "execute",
+            input: { command: "bun run check" },
+            out: "Checked 203 files in 81ms. No fixes applied.\n\n 48 pass\n 0 fail\nRan 48 tests across 6 files. [3.2s]",
+          },
+        ];
+        for (const [i, c] of calls.entries()) {
+          await update({
+            sessionUpdate: "tool_call",
+            toolCallId: c.id,
+            title: c.title,
+            kind: c.kind,
+            status: "in_progress",
+            rawInput: c.input,
+            locations: c.kind === "edit" ? [{ path: c.title }] : [],
+          });
+          const last = i === calls.length - 1;
+          await sleep(last && lower.includes("slowly") ? 120_000 : 150, signal);
+          await update({
+            sessionUpdate: "tool_call_update",
+            toolCallId: c.id,
+            status: "completed",
+            content: c.out ? [{ type: "content", content: { type: "text", text: c.out } }] : [],
+          });
+        }
+        await say(
+          'Done: the rail collapses to 64px and the choice is remembered per device.\n\n```ts\nexport function toggleSidebar(): void {\n  setSidebarMode(current === "rail" ? "expanded" : "rail");\n}\n```',
+          3,
+        );
+        return stop();
+      }
       if (lower.includes("slow")) {
         for (let i = 0; i < 40 && !signal.aborted; i++) {
           await update({
@@ -331,12 +392,15 @@ const app = acp
         return stop();
       }
       if (lower.includes("permission")) {
+        // The command comes from backticks in the prompt when there are any (demo content), else
+        // the classic `rm -rf build`.
+        const command = /`([^`]+)`/.exec(text)?.[1] ?? "rm -rf build";
         const toolCall = {
           toolCallId: "tool-perm",
-          title: "Run rm -rf build",
+          title: `Run ${command}`,
           kind: "execute",
           status: "pending",
-          rawInput: { command: "rm -rf build" },
+          rawInput: { command },
         } satisfies acp.ToolCall;
         await update({ sessionUpdate: "tool_call", ...toolCall });
         const res: acp.RequestPermissionResponse = await client.request("session/request_permission", {

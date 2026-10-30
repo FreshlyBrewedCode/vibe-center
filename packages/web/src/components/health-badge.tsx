@@ -11,7 +11,13 @@ const labels: Record<HarnessHealth["status"], string> = {
 
 export function HealthBadge({ health }: { health: HarnessHealth }) {
   const variant =
-    health.status === "ok" ? "secondary" : health.status === "unknown" ? "outline" : "destructive";
+    health.status === "ok"
+      ? "ok"
+      : health.status === "unknown"
+        ? "outline"
+        : health.status === "auth_required"
+          ? "warn"
+          : "destructive";
   return (
     <Badge variant={variant} title={health.message ?? undefined} data-testid="health">
       {health.message === "checking…" ? "Checking…" : labels[health.status]}

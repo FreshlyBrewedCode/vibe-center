@@ -93,14 +93,15 @@ test("template picker, ⌘K switch/search, details panel, edit, theme, mobile, d
   await page.getByRole("option", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 
-  // Mobile viewport: the persistent sidebar is replaced by a hamburger + drawer, and the agent's
-  // name/presence show once, in the top bar (not duplicated in the DM header below it).
+  // Phone viewport: no sidebar. The DM is a pushed screen whose header has a back chevron to the
+  // agent list (the home screen), where tapping an agent pushes its DM again.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId("sidebar-agent").first()).not.toBeVisible();
-  await page.getByRole("button", { name: "Open agent list" }).click();
-  await page.getByRole("link", { name: /Second/ }).click();
-  await expect(page.getByTestId("mobile-presence")).toBeVisible();
-  await expect(page.getByTestId("presence")).not.toBeVisible();
+  await page.getByRole("link", { name: "Back to agents" }).click();
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+  await page.getByTestId("agent-row").filter({ hasText: "Second" }).click();
+  await expect(page.getByTestId("presence")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to agents" })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 800 });
 
   // Device revoke: confirming for "this device" signs it out.
@@ -108,7 +109,7 @@ test("template picker, ⌘K switch/search, details panel, edit, theme, mobile, d
   await page.getByRole("link", { name: "Devices" }).click();
   await page
     .getByTestId("device")
-    .filter({ hasText: "(this device)" })
+    .filter({ hasText: "this device" })
     .getByRole("button", { name: "Revoke" })
     .click();
   await page.getByRole("button", { name: "Sign out" }).click();

@@ -62,7 +62,7 @@ export function SecretRows({
           />
           <Button
             type="button"
-            variant="ghost"
+            variant="quiet"
             size="icon"
             aria-label="Remove"
             onClick={() => onChange(rows.filter((_, j) => j !== i))}
