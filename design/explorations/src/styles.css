@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Every direction sets these variables on its root element; the utilities below (bg-bg,
+   text-fg, border-line, …) read them. Keeps the mocks on semantic tokens like the app. */
+@theme inline {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif, "Noto Color Emoji";
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-muted-fg: var(--muted-fg);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-panel: var(--panel);
+  --color-panel-fg: var(--panel-fg);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-info: var(--info);
+  --color-call: var(--call);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A reusable "live" pulse for presence / call states. */
+@keyframes vc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.vc-pulse {
+  animation: vc-pulse 1.6s ease-in-out infinite;
+}
+
+/* Scrollbars stay out of the screenshots. */
+.vc-noscroll::-webkit-scrollbar {
+  display: none;
+}
+.vc-noscroll {
+  scrollbar-width: none;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@vibe-center/design-explorations",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway UI design mocks (5 directions) for the Vibe Center redesign. Not part of the app.",
+  "scripts": {
+    "dev": "vite --port 5199",
+    "shoot": "bun shoot.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "lucide-react": "1.64.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5"
+  }
+}
