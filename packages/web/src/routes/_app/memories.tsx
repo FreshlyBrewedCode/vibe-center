@@ -4,6 +4,17 @@ import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { toast } from "sonner";
 import { AgentAvatar } from "@/components/agent-avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,18 +154,25 @@ function MemoryItem({
         >
           <Pencil className="size-3.5" />
         </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-7"
-          aria-label="Delete memory"
-          onClick={() => {
-            if (!confirm("Delete this memory?")) return;
-            del.mutate(m.id, { onError: (e) => toast.error(e.message) });
-          }}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="icon" variant="ghost" className="size-7" aria-label="Delete memory">
+              <Trash2 className="size-3.5" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this memory?</AlertDialogTitle>
+              <AlertDialogDescription>This can't be undone.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => del.mutate(m.id, { onError: (e) => toast.error(e.message) })}>
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </li>
   );

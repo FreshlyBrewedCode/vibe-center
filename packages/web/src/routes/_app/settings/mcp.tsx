@@ -5,6 +5,17 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { McpServerDialog } from "@/components/mcp/server-form";
 import { McpStatusBadge } from "@/components/mcp/status-badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -87,17 +98,27 @@ function ServerRow({ server: s }: { server: McpServerView }) {
             >
               <Pencil className="size-3.5" />
             </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={`Remove ${s.name}`}
-              onClick={() => {
-                if (!confirm(`Remove the MCP server ${s.name}? Agents lose its tools.`)) return;
-                del.mutate(s.id, { onError: (e) => toast.error(e.message) });
-              }}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label={`Remove ${s.name}`}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove {s.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>Agents lose its tools.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => del.mutate(s.id, { onError: (e) => toast.error(e.message) })}
+                  >
+                    Remove
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </>
         )}
       </div>
