@@ -75,6 +75,14 @@ async function worker<T = unknown>(path: string, json?: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 type Frame = { type: string; id?: string; text?: string; status?: string; title?: string };
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 const frames = () => worker<Frame[]>("/test/frames");
 const messages = async (agent: AgentView) =>
   (await api<MessagesResponse>(`/api/conversations/${agent.conversationId}/messages`)).messages;
@@ -333,6 +341,38 @@ describe("a call through the bridge", () => {
     expect(((await res.json()) as { hint?: string }).hint).toBe("settings:voice");
     expect(await api<Call[]>("/api/voice/calls")).toEqual([]);
     expect((await api<AgentView>(`/api/agents/${agent.id}`)).presence).toBe("idle");
+  });
+
+  test("deleting an agent in a call hangs up, stops its harness, and nothing brings it back", async () => {
+    const doomed = await api<AgentView>("/api/agents", {
+      method: "POST",
+      json: {
+        name: "Doomed",
+        avatar: { emoji: "🪦", color: "#555555" },
+        harnessId: agent.harnessId,
+        cwd: dataDir,
+      },
+    });
+    const ev = events();
+    await ev.opened;
+    const { call: c } = await api<StartCallResponse>("/api/voice/calls", {
+      method: "POST",
+      json: { agentId: doomed.id, sdp: "v=0 offer", type: "offer" },
+    });
+    const pid = await until(async () => app.services.chat.pids()[doomed.id]); // the call warmed it
+    // a spoken request is mid-reply when the agent is deleted
+    const { id } = await worker<{ id: string }>("/test/say", { text: "tell me something slow" });
+    await until(async () => (await frames()).find((f) => f.type === "text" && f.id === id));
+    await api(`/api/agents/${doomed.id}`, { method: "DELETE" });
+    const ended = await ev.find<Extract<ServerEvent, { type: "call.upsert" }>>(
+      (e) => e.type === "call.upsert" && e.call.id === c.id && e.call.state === "ended",
+    );
+    expect(ended.call.endReason).toBe("the agent was deleted");
+    expect(alive(pid)).toBe(false);
+    expect(() => app.services.chat.prompt(doomed.id, { text: "hi", source: "voice" })).toThrow(/not found/);
+    await Bun.sleep(300);
+    expect(app.services.chat.pids()[doomed.id]).toBeUndefined();
+    ev.ws.close();
   });
 
   test("a remote worker that isn't set up: calls are refused with a hint", async () => {

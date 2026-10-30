@@ -60,7 +60,9 @@ export function createServices(opts: ServicesOptions): Services {
     timeouts: opts.timeouts,
     tracker: procs,
   });
-  const agents = new AgentService(repos, bus, presence, harnesses, chat);
+  const agents = new AgentService(repos, bus, presence, harnesses, chat, {
+    beforeDelete: (agentId) => voice.hangUpAgent(agentId, "the agent was deleted"),
+  });
   const voice = new VoiceService(
     { repos, bus, chat, presence, dataDir: opts.dataDir, tracker: procs },
     opts.voice,

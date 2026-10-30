@@ -312,8 +312,7 @@ export class VoiceService {
   }
 
   async startCall(deviceId: string, body: StartCallBody): Promise<StartCallResponse> {
-    const agent = this.deps.repos.agents.get(body.agentId);
-    if (!agent) throw new HttpError(404, `agent not found: ${body.agentId}`);
+    const agent = this.deps.chat.requireAgent(body.agentId); // 404 also while it's being deleted
     const conversation = this.deps.repos.conversations.dmFor(agent.id);
     if (!conversation) throw new HttpError(404, "the agent has no DM");
     const client = this.requireWorker();
@@ -404,6 +403,13 @@ export class VoiceService {
     await this.client()
       ?.request(`/calls/${callId}`, { method: "DELETE", timeoutMs: 2000 })
       .catch(() => {});
+  }
+
+  /** End every call with this agent (it is being deleted). */
+  async hangUpAgent(agentId: string, reason: string): Promise<void> {
+    for (const live of [...this.calls.values()]) {
+      if (live.call.agentId === agentId) await this.hangUp(live.call.id, reason);
+    }
   }
 
   /** Debug/testing: speak an event in a given call. */

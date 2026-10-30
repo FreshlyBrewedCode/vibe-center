@@ -372,6 +372,39 @@ describe("built-in tools", () => {
     expect(app.services.repos.messages.latestSeq(alice.conversationId)).toBeGreaterThan(startSeq);
   });
 
+  test("deleting a busy agent: its harness stops, a waiting sender is told, nothing respawns it", async () => {
+    await settled();
+    const dave = await newAgent("Dave");
+    const slow = app.services.chat.prompt(dave.id, { text: "slow please", source: "user" });
+    const pid = await until(() => app.services.chat.pids()[dave.id]);
+    // Alice's message queues behind Dave's running turn
+    expect(
+      await call(alice, "send_message_to_agent", { agent: "Dave", message: "Are you there?" }),
+    ).toContain("Sent to Dave");
+    const deleting = app.services.agents.delete(dave.id);
+    // from the first moment, no prompt (UI, call, another agent) can start Dave's harness again
+    expect(() => app.services.chat.prompt(dave.id, { text: "hi", source: "user" })).toThrow(/not found/);
+    // (refused as "not available" while the deletion runs, as unknown once it's done)
+    expect(await call(bob, "send_message_to_agent", { agent: "Dave", message: "Hello?" })).toMatch(
+      /Dave is not available|no agent named "Dave"/,
+    );
+    await deleting;
+    expect((await slow.done).status).toBe("cancelled");
+    expect(() => process.kill(pid, 0)).toThrow();
+    // Alice hears back instead of waiting forever
+    const told = await until(() =>
+      messages(alice).find(
+        (m) => m.kind === "text" && m.data?.source === "event" && m.text.includes("Dave was deleted"),
+      ),
+    );
+    expect(told.data).toMatchObject({ fromAgentId: dave.id });
+    await settled();
+    expect(app.services.chat.pids()[dave.id]).toBeUndefined();
+    expect(await call(alice, "send_message_to_agent", { agent: "Dave", message: "Hello?" })).toContain(
+      'no agent named "Dave"',
+    );
+  });
+
   test("harnesses without HTTP MCP reach the gateway through the stdio bridge", async () => {
     const stdioOnly = await api<Harness>("/api/harnesses", {
       method: "POST",

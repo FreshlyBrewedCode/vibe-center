@@ -10,6 +10,11 @@ import type { HarnessService } from "./harnesses.ts";
 import type { PresenceStore } from "./presence.ts";
 
 /** Agent CRUD. Every agent has exactly one DM conversation, created with it. */
+export interface AgentHooks {
+  /** Runs once the agent takes no more prompts, before its runtime stops (calls hang up here). */
+  beforeDelete?: (agentId: string) => Promise<void>;
+}
+
 export class AgentService {
   constructor(
     private readonly repos: Repos,
@@ -17,6 +22,7 @@ export class AgentService {
     private readonly presence: PresenceStore,
     private readonly harnesses: HarnessService,
     private readonly chat: ChatService,
+    private readonly hooks: AgentHooks = {},
   ) {}
 
   list(): AgentView[] {
@@ -51,10 +57,22 @@ export class AgentService {
     return this.publish(agent);
   }
 
+  /**
+   * Delete an agent that may be busy: from the first moment it takes no prompts (UI, calls,
+   * other agents get a 404), its call hangs up, its queued and running turns end with "<name> was
+   * deleted" (an agent waiting for its reply gets that), its harness stops, then the row goes.
+   */
   async delete(id: string): Promise<void> {
-    this.get(id);
-    await this.chat.disposeAgent(id);
-    this.repos.agents.delete(id);
+    const agent = this.get(id);
+    const reason = `${agent.name} was deleted`;
+    this.chat.setRetired(id, true);
+    try {
+      await this.hooks.beforeDelete?.(id);
+      await this.chat.disposeAgent(id, reason);
+      this.repos.agents.delete(id);
+    } finally {
+      this.chat.setRetired(id, false);
+    }
     this.bus.publish({ type: "agent.deleted", agentId: id });
   }
 

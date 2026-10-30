@@ -70,6 +70,8 @@ export class ChatService {
   private replies = new Map<string, string>();
   /** Permission message id → where to answer it. */
   private pendingPermissions = new Map<string, { agentId: string; requestId: string }>();
+  /** Agents being deleted: they take no prompts, so nothing can spawn their harness again. */
+  private retired = new Set<string>();
 
   constructor(
     private readonly repos: Repos,
@@ -230,11 +232,22 @@ export class ChatService {
     }
   }
 
-  async disposeAgent(agentId: string): Promise<void> {
+  /** Stop the agent's runtime: queued and running turns end with `reason`, the harness stops. */
+  async disposeAgent(agentId: string, reason?: string): Promise<void> {
     const rt = this.runtimes.get(agentId);
     this.runtimes.delete(agentId);
-    await rt?.dispose();
+    await rt?.dispose(reason);
     this.presence.forget(agentId);
+  }
+
+  /**
+   * The agent is being deleted: from now on it takes no prompts (404), so nothing (another
+   * agent's message, a delivered reply, a call) can spawn its harness again. `retired = false`
+   * once its row is gone, or if the deletion failed.
+   */
+  setRetired(agentId: string, retired: boolean): void {
+    if (retired) this.retired.add(agentId);
+    else this.retired.delete(agentId);
   }
 
   async dispose(): Promise<void> {
@@ -400,8 +413,9 @@ export class ChatService {
     return { conversation, session };
   }
 
-  private requireAgent(id: string): Agent {
-    const a = this.repos.agents.get(id);
+  /** The agent, if it exists and isn't being deleted; else a 404. */
+  requireAgent(id: string): Agent {
+    const a = this.retired.has(id) ? null : this.repos.agents.get(id);
     if (!a) throw new HttpError(404, `agent not found: ${id}`);
     return a;
   }

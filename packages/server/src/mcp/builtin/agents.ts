@@ -37,14 +37,19 @@ export class AgentMessenger {
     if (waiting >= MAX_PENDING_PER_AGENT) {
       throw new ToolError(`not sent: ${waiting} of your messages are still waiting for replies`);
     }
+    let handle: PromptHandle;
+    try {
+      handle = this.d.chat.prompt(to.id, {
+        text: message,
+        source: "agent",
+        fromAgentId: from.id,
+        note: `[Message from the agent "${from.name}" (not the user), sent with send_message_to_agent. Answer it directly; your reply goes back to ${from.name} automatically.]`,
+      });
+    } catch (e) {
+      // e.g. the target is being deleted right now
+      throw new ToolError(`not sent: ${to.name} is not available (${(e as Error).message})`);
+    }
     this.pending.set(from.id, waiting + 1);
-
-    const handle = this.d.chat.prompt(to.id, {
-      text: message,
-      source: "agent",
-      fromAgentId: from.id,
-      note: `[Message from the agent "${from.name}" (not the user), sent with send_message_to_agent. Answer it directly; your reply goes back to ${from.name} automatically.]`,
-    });
     this.hops.set(handle.turnId, hop);
 
     void handle.done

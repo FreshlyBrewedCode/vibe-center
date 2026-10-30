@@ -144,6 +144,8 @@ export class AgentRuntime {
     detail: null,
   };
   private disposed = false;
+  /** Why the runtime was disposed; the error of the turns it ended. */
+  private disposeReason: string | null = null;
   private warming: Promise<void> | null = null;
   /**
    * The session setup in flight, if any. There is at most one per agent: a turn cancelled during
@@ -277,13 +279,20 @@ export class AgentRuntime {
     }
   }
 
-  async dispose(): Promise<void> {
+  /**
+   * Stop for good: queued turns end at once, the running one is cancelled, the process group is
+   * stopped. Every turn has emitted its turn.end by the time this resolves. `reason` becomes the
+   * error of the turns it ended (e.g. an agent-to-agent message's sender sees it).
+   */
+  async dispose(reason = "agent stopped"): Promise<void> {
     this.disposed = true;
-    for (const q of this.queue.splice(0)) this.endQueued(q, "agent stopped");
+    this.disposeReason = reason;
+    for (const q of this.queue.splice(0)) this.endQueued(q, reason);
     if (this.current) this.cancelTurn(this.current, "user");
     const proc = this.proc ?? (await this.starting?.catch(() => null)) ?? null;
     this.proc = null;
     await proc?.close();
+    await this.draining;
   }
 
   // ---- turn loop ------------------------------------------------------------------------------
@@ -376,13 +385,14 @@ export class AgentRuntime {
     }
     // OpenCode answers a cancel of a hung prompt with end_turn, so trust our own flag too.
     if (stopReason === "cancelled" || turn.cancelReason === "user") {
-      return { status: "cancelled", stopReason: "cancelled", error: null };
+      return { status: "cancelled", stopReason: "cancelled", error: this.disposeReason };
     }
     return { status: "complete", stopReason, error: null };
   }
 
   private errorResult(turn: ActiveTurn, e: unknown): TurnResult {
-    if (turn.cancelReason === "user") return { status: "cancelled", stopReason: null, error: null };
+    if (turn.cancelReason === "user")
+      return { status: "cancelled", stopReason: null, error: this.disposeReason };
     if (turn.cancelReason === "timeout")
       return { status: "error", stopReason: null, error: this.timeoutMessage(turn) };
     return { status: "error", stopReason: null, error: describeError(e) };
