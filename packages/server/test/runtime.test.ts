@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { adapters } from "../src/acp/adapters/index.ts";
-import { noMcp } from "../src/acp/mcp.ts";
+import { type McpProvider, noMcp } from "../src/acp/mcp.ts";
 import { probeHarness } from "../src/acp/probe.ts";
 import { AgentRuntime, type RuntimeEvent, type RuntimeOptions } from "../src/acp/runtime.ts";
 
@@ -253,6 +253,55 @@ describe("AgentRuntime against the fake ACP agent", () => {
       status: "error",
       error: expect.stringContaining("working directory does not exist"),
     });
+  });
+});
+
+describe("session setup is single flight", () => {
+  const until = async (cond: () => boolean) => {
+    for (let i = 0; i < 300 && !cond(); i++) await Bun.sleep(10);
+    expect(cond()).toBe(true);
+  };
+  /** Mints one "credential" per session setup, like the MCP gateway (which revokes the last). */
+  const countingMcp = () => {
+    const minted: string[] = [];
+    const mcp: McpProvider = {
+      forSession: async (ctx) => {
+        minted.push(ctx.sessionKey);
+        return { servers: [], allowedTools: [] };
+      },
+    };
+    return { mcp, minted };
+  };
+  const ready = (events: RuntimeEvent[]) =>
+    events.filter((e): e is Extract<RuntimeEvent, { type: "session.ready" }> => e.type === "session.ready");
+
+  test("Stop during a slow session/new, then a new prompt: one setup, one credential", async () => {
+    const { mcp, minted } = countingMcp();
+    const { rt, events, text } = makeRuntime({ mcp, env: { FAKE_ACP_SLOW_SESSION: "600" } });
+    const first = rt.prompt(textPrompt("t1", "hello"));
+    await until(() => minted.length === 1); // session/new is in flight now
+    const t0 = Date.now();
+    await rt.cancel();
+    expect((await first.done).status).toBe("cancelled");
+    expect(Date.now() - t0).toBeLessThan(300); // Stop doesn't wait for the setup
+    const second = await rt.prompt(textPrompt("t2", "again")).done;
+    expect(second.status).toBe("complete");
+    expect(text("t2")).toBe("Echo: again");
+    expect(minted).toEqual(["s1"]);
+    expect(ready(events)).toHaveLength(1);
+  });
+
+  test("New session during setup: the stale setup never goes live", async () => {
+    const { mcp, minted } = countingMcp();
+    const { rt, events } = makeRuntime({ mcp, env: { FAKE_ACP_SLOW_SESSION: "400" } });
+    const first = rt.prompt(textPrompt("t1", "hello"));
+    await until(() => minted.length === 1);
+    await rt.newSession("s2");
+    expect((await first.done).status).toBe("cancelled");
+    expect((await rt.prompt(textPrompt("t2", "history")).done).status).toBe("complete");
+    // the last credential minted belongs to the session that is live
+    expect(minted).toEqual(["s1", "s2"]);
+    expect(ready(events).map((e) => e.sessionKey)).toEqual(["s2"]);
   });
 });
 

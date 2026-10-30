@@ -145,6 +145,12 @@ export class AgentRuntime {
   };
   private disposed = false;
   private warming: Promise<void> | null = null;
+  /**
+   * The session setup in flight, if any. There is at most one per agent: a turn cancelled during
+   * setup leaves it running and the next prompt joins it, so the harness never gets a second
+   * session (and the MCP gateway never revokes the credential of the session that ends up live).
+   */
+  private sessionSetup: { proc: AcpProcess; key: string; promise: Promise<string | null> } | null = null;
 
   constructor(private readonly opts: RuntimeOptions) {
     this.cfg = { agent: opts.agent, options: opts.options, harness: opts.harness, adapter: opts.adapter };
@@ -335,7 +341,6 @@ export class AgentRuntime {
 
     let result: TurnResult;
     try {
-      await this.warming; // never two session setups at once
       await this.relaunchIfPending();
       const proc = await Promise.race([this.ensureProcess(), abandoned]);
       const sessionId = await Promise.race([this.ensureSession(proc), abandoned]);
@@ -502,16 +507,42 @@ export class AgentRuntime {
     return proc;
   }
 
+  /** The live session's id, set up (single flight) if there is none. */
   private async ensureSession(proc: AcpProcess): Promise<string> {
-    if (this.acpSessionId) {
-      if (this.configDirty) await this.applyConfig(proc, this.acpSessionId, []);
-      return this.acpSessionId;
+    for (;;) {
+      if (this.acpSessionId) {
+        if (this.configDirty) await this.applyConfig(proc, this.acpSessionId, []);
+        return this.acpSessionId;
+      }
+      if (this.proc !== proc) throw new Error("the harness was restarted while the session was set up");
+      if (!this.sessionSetup) {
+        const setup = { proc, key: this.sessionKey, promise: this.setupSession(proc, this.sessionKey) };
+        const clear = () => {
+          if (this.sessionSetup === setup) this.sessionSetup = null;
+        };
+        setup.promise.then(clear, clear);
+        this.sessionSetup = setup;
+      }
+      const setup = this.sessionSetup;
+      try {
+        await setup.promise;
+      } catch (e) {
+        // failures of a setup for another process or an ended session aren't ours; retry
+        if (setup.proc === proc && setup.key === this.sessionKey) throw e;
+      }
     }
+  }
+
+  /**
+   * Create or resume the session for `key` on `proc`. Resolves to null without making it live if
+   * the process was replaced or a new app session started meanwhile.
+   */
+  private async setupSession(proc: AcpProcess, key: string): Promise<string | null> {
     const { agent, adapter } = this.cfg;
     const caps = proc.init.agentCapabilities ?? {};
     const mcp = await this.opts.mcp.forSession({
       agentId: agent.agentId,
-      sessionKey: this.sessionKey,
+      sessionKey: key,
       capabilities: caps,
     });
     const ctx = { ...agent, capabilities: caps, mcp };
@@ -562,6 +593,13 @@ export class AgentRuntime {
       sessionId = r.sessionId;
       configOptions = r.configOptions ?? [];
     }
+    if (this.proc !== proc || this.sessionKey !== key || this.disposed) {
+      // stale: "New session" was pressed or the harness restarted while this ran
+      if (proc.alive && proc.init.agentCapabilities?.sessionCapabilities?.close) {
+        void proc.agent.request("session/close", { sessionId }).catch(() => {});
+      }
+      return null;
+    }
     this.acpSessionId = sessionId;
     this.resumeTarget = sessionId;
     this.configOptions = configOptions;
@@ -570,7 +608,7 @@ export class AgentRuntime {
     await this.applyConfig(proc, sessionId, warnings);
     this.emit({
       type: "session.ready",
-      sessionKey: this.sessionKey,
+      sessionKey: key,
       acpSessionId: sessionId,
       resumed,
       resumeFailed: target && !resumed ? resumeFailed : null,
