@@ -73,9 +73,12 @@ function audioProbe() {
     return s;
   };
   const PC = window.RTCPeerConnection;
+  const pcs: RTCPeerConnection[] = [];
+  (window as unknown as { __vcPcs: RTCPeerConnection[] }).__vcPcs = pcs;
   window.RTCPeerConnection = class extends PC {
     constructor(...args: ConstructorParameters<typeof RTCPeerConnection>) {
       super(...args);
+      pcs.push(this);
       this.addEventListener("track", (e) => watch(e.streams[0] ?? new MediaStream([e.track]), "bot"));
     }
   };
@@ -217,12 +220,64 @@ test("call an agent: transcripts in the DM, tool filler, barge-in, proactive eve
   await expect(page.getByTestId("call-transcript")).toBeVisible();
   await page.screenshot({ path: join(OUT, "call.png") });
 
-  // Hang up: the bar goes away and the agent is idle again.
   const browserAudio = await page.evaluate(() => (window as unknown as { __vcAudio: unknown[] }).__vcAudio);
-  await page.getByTestId("call-hangup").click();
+
+  // A permission request during the call shows in the call bar too (approving by voice isn't a
+  // thing), with its answer buttons.
+  if (!realAgent) {
+    await page.request.post(`/api/conversations/${agent.conversationId}/messages`, {
+      data: { text: "permission please" },
+    });
+    const ask = page.getByTestId("call-permission");
+    await expect(ask).toContainText("Run rm -rf build");
+    await ask.getByRole("button", { name: "Allow" }).click();
+    await expect(ask).toHaveCount(0);
+  }
+
+  // On a phone the call bar stays in view while the transcript scrolls.
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.getByTestId("message-list").evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const bar = (await page.getByTestId("call-bar").boundingBox())!;
+  expect(bar.y).toBeGreaterThanOrEqual(0);
+  expect(bar.y + bar.height).toBeLessThan(664);
+  await page.screenshot({ path: join(OUT, "call-mobile.png") });
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // Another tab (or a reloaded one) doesn't hold the audio but controls the call through the
+  // server: its mute silences the mic in the tab that has it.
+  const other = await context.newPage();
+  await other.goto(`/agents/${agent.id}`);
+  await expect(other.getByTestId("call-elsewhere")).toContainText("isn't in this tab");
+  const micOn = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __vcPcs: RTCPeerConnection[] }).__vcPcs[0]?.getSenders()[0]?.track?.enabled,
+    );
+  await other.getByTestId("call-mute").click();
+  await expect(page.getByTestId("call-mute")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(micOn).toBe(false);
+  await other.getByTestId("call-mute").click();
+  await expect(page.getByTestId("call-mute")).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(micOn).toBe(true);
+
+  // Hang up from that tab after a reload: the call ends everywhere, the media tab lets go.
+  await other.reload();
+  await expect(other.getByTestId("call-elsewhere")).toBeVisible();
+  await other.getByTestId("call-hangup").click();
+  await expect(other.getByTestId("call-bar")).toHaveCount(0);
   await expect(page.getByTestId("call-bar")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __vcPcs: RTCPeerConnection[] }).__vcPcs[0]?.connectionState,
+      ),
+    )
+    .toBe("closed");
   await expect(page.getByTestId("presence")).toHaveText("Idle", { timeout: 10_000 });
   expect(await (await page.request.get("/api/voice/calls")).json()).toEqual([]);
+  await other.close();
 
   // Latency report from the worker's call log, joined with the page's own audio onsets.
   const logs = join(dataDir, "voice", "calls");

@@ -295,6 +295,21 @@ tool selection, memories for the UI, and the gateway.
 One socket per tab; every event goes to every device (single user). The client sends only
 `ping`. Mutations go through HTTP.
 
+The channel heals itself (`lib/events.ts`), because a phone that locks its screen freezes the tab
+and can lose the connection without a `close` event: the socket looks open but is dead.
+
+- **Heartbeat, client:** a `ping` every 10 s; no frame back within 5 s → the socket is dropped
+  (without waiting for a close) and a new one opens at once.
+- **Heartbeat, server** (`http/ws.ts`): a socket whose client sent nothing for 45 s is terminated.
+- **Resume:** `visibilitychange` (visible), `pageshow` and `online` check the socket at once: a
+  closed one reconnects now (backoff reset), an open one must answer a ping within 3 s. Timers
+  that slept (a frozen tab) do the same on their first tick.
+- **Resync:** `hello` (every new socket) and a resumed socket's first answer refetch every cached
+  query but `me`: messages (including permission requests), presence, unread counts, calls.
+- **UI:** `components/connection-status.tsx` shows "Reconnecting…" while the socket is down for
+  more than a second. Call controls don't depend on the channel: their HTTP responses update the
+  cache directly (`endCall`, `setCallMuted` in `lib/queries.ts`).
+
 | event | when |
 |---|---|
 | `hello` | first frame; the client refetches everything it caches (covers reconnects) |
@@ -351,6 +366,11 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   offer with the bridge URL (`ws://127.0.0.1:<port>/voice/bridge` for managed; the tailnet URL or
   the "app URL" setting for remote). The worker dials the bridge before it answers, so a call
   never runs without its bridge. ICE patches and hang-up are proxied the same way.
+- **Controls from anywhere**: hang-up (`DELETE /api/voice/calls/:id`) and mute
+  (`PATCH /api/voice/calls/:id {muted}`) work from any tab or device of the user. The server owns
+  `Call.muted`: the bridge sends the worker a `mute` frame (its `MicGate` replaces the mic's audio
+  with silence, so it holds even while the browser with the media is frozen), and the tab holding
+  the media mutes its track to match.
 - **Bridge** (`voice/bridge.ts`, `CallBridge`): each `prompt` frame becomes
   `chat.prompt(agentId, { source: "voice" | "event", display: "voice_transcript" | "text",
   replyKind: "voice_transcript", note: voiceNote(), idleTimeoutMs: 20 s, onUpdate })`. Updates go
@@ -383,8 +403,11 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   `services/speech-gpu/speech.sh` (only where the `gpu` helper exists) and streams its result
   into `voice.status`.
 - **Web** (`components/voice/`): `call-client.ts` holds the media (mic, `RTCPeerConnection`,
-  playback; a module store, since it is client state), `call.tsx` the Call button and the call
-  bar (state, timer, mute, hang up, live transcript, reply latency). Settings → Voice
+  playback; a module store, since it is client state) and follows the server's call in the query
+  cache (mute, ended), `call.tsx` the Call button and the call bar (state, timer, mute, hang up,
+  a pending permission request with its answer buttons, live transcript, reply latency). A tab
+  without the media (another tab, another device, or this tab after a reload) shows the call, its
+  controls and "Move audio here", which starts a new call with the agent from this tab. Settings → Voice
   (`routes/_app/settings/voice.tsx`) and the voice picker in the agent editor.
 
 ## Extension points
@@ -424,7 +447,11 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 ## Known gaps (phase 2b, voice)
 
 - One call at a time (one worker pipeline); a new call ends the previous one. A call keeps
-  running when you leave the DM, but its bar only shows in that DM.
+  running when you leave the DM; elsewhere the global call indicator shows it.
+- Reloading the tab that holds the media ends the call: the browser closes the
+  `RTCPeerConnection` on unload and the worker hangs up ("browser disconnected"). Re-attaching a
+  new page to the running pipeline would need the worker to keep a call alive without its client
+  and renegotiate; "Move audio here" starts a new call in the same agent session instead.
 - The agent is still the latency floor (see `services/voice/RESULTS.md`). No talker/reasoner
   split, no speculative prompting yet.
 - Smart Turn sometimes calls a short utterance incomplete ("Sorry, stop. Just say goodbye."),
