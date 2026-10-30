@@ -86,3 +86,33 @@ test("sign in, create an agent, chat with streaming, stop, permissions, new sess
   await page.getByRole("link", { name: "Devices" }).click();
   await expect(page.getByText("(this device)")).toBeVisible();
 });
+
+test("a cached probe error shows the banner but doesn't lock the composer", async ({ page }) => {
+  await page.goto(mintLink());
+  // Wait for the device-session cookie exchange (client-side JS, not part of the navigation
+  // `page.goto` waits for) before issuing API requests via `page.request`.
+  await expect(page.getByRole("link", { name: "New agent" }).first()).toBeVisible();
+
+  // `true` exists and exits immediately, which the probe reports as a generic "error" (unlike a
+  // missing command, which is "not_installed") — the composer should stay usable either way.
+  const harness = await (
+    await page.request.post("/api/harnesses", { data: { name: "Flaky", command: "true", args: [] } })
+  ).json();
+  const probed = await (await page.request.post(`/api/harnesses/${harness.id}/probe`)).json();
+  expect(probed.health.status).toBe("error");
+
+  await page.getByRole("link", { name: "New agent" }).first().click();
+  await page.getByTestId("template-blank").click();
+  await page.getByLabel("Name").fill("Flaky agent");
+  await page.getByRole("combobox", { name: "Harness" }).click();
+  await page.getByRole("option", { name: "Flaky" }).click();
+  await page.getByLabel("Working directory").fill(dataDir);
+  await page.getByRole("button", { name: "Create agent" }).click();
+  await expect(page.getByTestId("sidebar-agent").filter({ hasText: "Flaky agent" })).toBeVisible();
+
+  await expect(page.getByTestId("harness-down-banner")).toBeVisible();
+  const composer = page.getByLabel("Message", { exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.fill("hello");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+});

@@ -26,8 +26,26 @@ test("template picker, ⌘K switch/search, details panel, edit, theme, mobile, d
     await expect(page.getByTestId("sidebar-agent").filter({ hasText: name })).toBeVisible();
   }
 
-  // Template picker: starter prompt is pre-filled from the template.
-  await createAgent("coding", "First", /careful, direct coding assistant/);
+  // Template picker: the "Coding agent" template pre-fills a harness (before we swap it for the
+  // test's fake one below), a starter prompt and a voice, and applies its tool preset after create.
+  await page.getByRole("link", { name: "New agent" }).first().click();
+  await page.getByTestId("template-coding").click();
+  await expect(page.getByLabel("System prompt")).toHaveValue(/careful, direct coding assistant/);
+  await expect(page.getByRole("combobox", { name: "Harness" })).toHaveText("Claude Code");
+  await page.getByLabel("Name").fill("First");
+  await page.getByRole("combobox", { name: "Harness" }).click();
+  await page.getByRole("option", { name: "FakeUI" }).click();
+  await page.getByLabel("Working directory").fill(dataDir);
+  await page.getByRole("button", { name: "Create agent" }).click();
+  await expect(page.getByTestId("sidebar-agent").filter({ hasText: "First" })).toBeVisible();
+
+  // The coding template turns the "message other agents" tool off and leaves memory on.
+  await page.getByRole("link", { name: "Edit agent" }).click();
+  await page.getByTestId("tool-group-builtin").getByRole("button").click();
+  await expect(page.getByRole("switch", { name: "send_message_to_agent" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "memory_save" })).toBeChecked();
+  await page.goBack();
+
   await createAgent("blank", "Second");
 
   // Back to First's DM, send a message with a unique token to search for later.
