@@ -26,6 +26,11 @@ remote.
   `prototype/voice-loop/run.sh`), which the mic needs. Used from a MacBook browser first; the
   layout must also work on a phone
 - a desktop app (Electrobun) is a later iteration, not v1
+- **trust between agents (v1 decision):** agents run as the user's OS user and can message each
+  other by default, so an agent with a shell can act as another agent (read its credential) and
+  any agent can ask any other to do something. Fine for one user on their own machine; the way
+  forward is an allow-list for agent-to-agent messages, then per-agent OS users or sandboxes
+  (ARCHITECTURE.md, "Security and trust model")
 
 ## Core concepts
 

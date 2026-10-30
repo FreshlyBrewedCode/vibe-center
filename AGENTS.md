@@ -32,7 +32,8 @@ bun run check:voice    # voice worker: ruff + pytest (services/voice/run.sh chec
   Follow `.agents/skills/gpu-ml`: check `gpu status` for a local user, `speech.sh down`, then
   `gpu sleep` when done.
 - Leave nothing running: stop servers with Ctrl+C or SIGTERM, which also stops harness
-  processes, the voice worker and the `tailscale serve` entry. Don't use `pkill -f <pattern>` from an agent shell;
+  processes, the voice worker, a GPU speech job and the `tailscale serve` entry. If a server
+  was killed hard, the next `start` on that data dir reaps what it left (`<data>/run/`). Don't use `pkill -f <pattern>` from an agent shell;
   it can match the shell itself. Kill by PID.
 
 ## Layout

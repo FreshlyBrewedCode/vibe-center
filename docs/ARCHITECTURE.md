@@ -39,6 +39,7 @@ packages/server/src/
   services.ts             wires repos, bus and domain services (the MCP provider seam lives here)
   config.ts               data dir, ports
   control.ts, tailscale.ts
+  procs.ts                process groups: stop with SIGKILL escalation, crash-orphan registry
   auth/auth.ts            link tokens, device sessions
   http/                   api.ts (core routes), mcp-api.ts, middleware.ts, ws.ts, static.ts, origin.ts
   domain/                 chat.ts, turns.ts, agents.ts, harnesses.ts, presence.ts, errors.ts
@@ -73,6 +74,60 @@ e2e/                      Playwright
   (`--https-port`, default 7443, because 443 and 8443 are taken on dev). `--local` skips it.
   Chromium accepts Secure cookies on `http://localhost`, which the tests rely on.
 
+## Security and trust model
+
+**Who can reach the server** is covered under Auth: a loopback bind, the tailnet through
+`tailscale serve`, device cookies, Origin checks. The MCP gateway and the voice bridge take
+per-session/per-call bearer tokens and refuse anything forwarded from outside.
+
+**Data at rest:** the data dir is forced to 0700 and the DB (with its WAL/SHM) to 0600 on every
+start, also when they already existed with looser modes. Secrets (MCP env and headers, custom
+harness env, the remote voice worker token) are write-only through the API.
+
+**Between agents (a v1 decision):** agents are not isolated from each other or from you.
+
+- Every harness runs as your OS user, with your environment. An agent with a shell (any Claude
+  Code or OpenCode agent) can do whatever you can: read the DB in the data dir, another
+  harness's env from `/proc/<pid>/environ` (and so its gateway token), other agents' state dirs.
+  With another agent's token it can call the gateway as that agent: its private memories, its
+  enabled upstream tools, messages in its name.
+- `send_message_to_agent` is on by default (the built-in `agents` group), so every agent can
+  prompt every other. The hop limit and the pending cap only stop loops. A prompt-injected agent
+  can ask a more privileged one to act; that agent's permission cards still apply, but anything
+  it is pre-allowed to do is not gated.
+- So the gateway's per-agent tool selection and private memories steer well-behaved agents; they
+  are not a security boundary against a hostile one. This is acceptable for a single-user v1 on
+  your own machine, where the harnesses already have your shell.
+- Done cheaply: the gateway token never goes on a command line (world-readable in
+  `/proc/<pid>/cmdline`, unlike environ); see the Claude Code bullet in the MCP section.
+- Path forward, in order of effort: (1) an allow-list for agent-to-agent messages (the `agents`
+  group off by default except for manager agents, set by the template picker; inbound messages
+  from non-managers shown as needing approval in the target's DM); (2) one OS user, or a sandbox
+  (bubblewrap, a container, `systemd-run --property=DynamicUser=yes`), per agent, so a harness can
+  read neither the data dir nor other harnesses' `/proc` entries; tokens then stay private to
+  their agent.
+
+## Processes
+
+Everything the server spawns long-lived runs in its own process group: harnesses (`AcpProcess`),
+probes, the managed voice worker and a GPU speech job (`speech.sh`). `procs.ts` handles them:
+
+- **Stop:** `stopGroup` sends SIGTERM to the group, waits up to the grace period (harnesses 2 s,
+  the worker 5 s) for it to be empty, then sends SIGKILL to whatever is left, also when the
+  leader exited first (children that ignore SIGTERM don't survive). A harness or worker that
+  exits on its own takes its group with it.
+- **Shutdown:** SIGINT, SIGTERM and SIGHUP stop calls, the worker, a running GPU job, every
+  harness and the `tailscale serve` entry. An uncaught exception runs the same cleanup and exits
+  1; an unhandled rejection is logged and the server keeps running.
+- **Crash orphans:** SIGKILL or the OOM killer leave no chance to clean up, so `ProcessRegistry`
+  writes `<data>/run/<pgid>.json` (run id, label) for every live group and removes it once the
+  group is gone. Every tracked process gets `VIBE_CENTER_RUN=<run id>` in its env. On start
+  (once the control socket proves no other server uses the data dir), records of an earlier run
+  are reaped: processes in a recorded group that carry that run's marker get SIGKILL (the whole
+  group if the leader still has the marker), so a reused pid never hits an unrelated process.
+  This reads `/proc`, so it's Linux only; elsewhere the start only warns. Parent-death signals
+  were the alternative; they'd need a wrapper per harness and still miss grandchildren.
+
 ## Data model (`db/migrations/`)
 
 | table | what |
@@ -101,13 +156,17 @@ edit an applied migration; add a new one.
   surface, which has the spec `systemPrompt` field).
 - `process.ts` / **`AcpProcess`**: spawns one harness in its own process group, `initialize`s
   it and wires `session/update`, `session/request_permission` and extension notifications.
-  `close()` stops the whole group (SIGTERM, then SIGKILL). `raceExit` turns a crash into an
-  error that includes the stderr tail instead of a hang.
+  `close()` stops the whole group (see "Processes" below); a harness that exits by itself takes
+  the rest of its group with it. `raceExit` turns a crash into an error that includes the stderr
+  tail instead of a hang.
 - `runtime.ts` / **`AgentRuntime`**: everything for one agent: lazy spawn; session
   create/resume (`session/resume`, else `session/load` with the replay dropped, else a fresh
   session plus a `resumeFailed` report); model and options via `session/set_config_option`
-  (values the harness doesn't offer are skipped with a warning); a prompt queue (one turn at a
-  time); `cancel()` (sends `session/cancel`, answers pending permissions with `cancelled`, and
+  (values the harness doesn't offer are skipped with a warning); **one session setup at a
+  time** (a turn cancelled during setup leaves it running and the next prompt joins it; a setup
+  that went stale meanwhile, after "New session" or a restart, never goes live), so the last
+  gateway credential minted always belongs to the live session; a prompt queue (one turn at a
+  time) with `waitState(turnId)` (what a queued turn waits for); `cancel()` (sends `session/cancel`, answers pending permissions with `cancelled`, and
   restarts the harness if it ignores the cancel past `cancelGraceMs`); per-turn **idle
   timeouts** (`idleMs` without any update, `toolIdleMs` while a tool runs, none while waiting
   for a permission); permission requests held until `respondPermission()`; presence
@@ -147,7 +206,10 @@ edit an applied migration; add a new one.
   segment. That fixes the "On it.Done" glue the spike found. Each tool call and permission request
   is one message updated in place, the plan is one message, and an error ends the turn with an
   `error` message.
-- **`AgentService`** (CRUD; every agent gets its DM and first session in one transaction),
+- **`AgentService`** (CRUD; every agent gets its DM and first session in one transaction;
+  **delete** first retires the agent in ChatService so every prompt gets a 404 and nothing can
+  spawn its harness again, hangs up its call, ends its turns with "<name> was deleted", which an
+  agent waiting for its reply receives, stops the harness, then deletes the row),
   **`HarnessService`** (presets, custom harnesses, probe/health), **`PresenceStore`** (runtime
   presence plus an override layer for `in_call`).
 - On start, turns and messages left `running`/`streaming`/`pending` by a dead server are
@@ -178,7 +240,11 @@ tool selection, memories for the UI, and the gateway.
   model when to use memory and search (Claude Code puts them in its system prompt).
 - **Claude Code:** `allowedTools: ["mcp__vibe"]` pre-allows every gateway tool (no permission
   round trip; selection is enforced by the gateway), and the adapter's `ENABLE_TOOL_SEARCH=false`
-  loads them up front.
+  loads them up front. claude-agent-acp passes MCP servers to `claude` as `--mcp-config <json>`
+  on its command line, readable by any local user, so the adapter sends the header as
+  `Bearer ${VIBE_MCP_TOKEN}` (Claude Code expands it) and the token in the session's env
+  (`_meta.claudeCode.options.env`). OpenCode keeps MCP config in its own process; the stdio
+  bridge gets the token in its env.
 - **Tool selection** resolves per tool: a per-tool override, else the agent's server switch, else
   the default: **built-in tools on, any added server off** until enabled for that agent (a new
   server shouldn't silently give every agent new powers). Tools a server adds later follow the
@@ -196,9 +262,10 @@ tool selection, memories for the UI, and the gateway.
   discovered tools are cached in `mcp_servers` and published as `mcp.server.upsert`. stdio servers
   get the MCP SDK's default env (HOME, PATH, USER, …) plus their configured env, not the app's
   whole environment. HTTP tries streamable HTTP, then the old HTTP+SSE transport.
-- **Secrets:** env values and headers are stored in SQLite (data dir is 0700) and never returned:
-  the API shows keys and, for values of 12+ chars, the last 4. Writes send `{ keep: true }` to keep
-  a stored value; keys left out are removed. Put secrets there, not in args or the URL.
+- **Secrets:** env values and headers are stored in SQLite (data dir 0700, DB 0600) and never
+  returned: the API shows keys and, for values of 12+ chars, the last 4 (`SecretMap`). Writes send
+  `{ keep: true }` to keep a stored value; keys left out are removed. Put secrets there, not in
+  args or the URL. Custom harness env works the same way (`domain/secrets.ts`).
 - **Recording** (`recorder.ts`): every call is logged in `mcp_tool_calls`, then attached to the
   harness's own ACP tool_call message as `data.gateway` (server, tool, args, result, status,
   duration), matched by the tool-use id Claude Code sends in `_meta["claudecode/toolUseId"]`, else
@@ -290,7 +357,10 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   back as `text`, `tool` (start/end: sentence break + filler trigger) and `usage`; pending
   permission messages of the turn as `permission`. `cancel` →
   `ChatService.cancelTurn(agentId, turnId)` (that turn only, a text turn queued next to it
-  survives). The voice-mode note is a `<voice-call>` block (short spoken replies, no markdown,
+  survives). A prompt queued behind another turn gets a `waiting` frame: at once when that turn
+  waits for an approval in the chat ("I'm waiting for your approval on a command in the chat"),
+  after 2.5 s when the agent is just busy; the call carries it as `Call.waiting` (reason, detail)
+  for the UI. Approving by voice isn't supported. The voice-mode note is a `<voice-call>` block (short spoken replies, no markdown,
   say a sentence before tools; the cut-off context of a barge-in goes in it too). The socket
   closing ends the call and cancels its open turns.
 - **Calls** (`voice/service.ts`): `Call` objects in memory (`GET /api/voice/calls`,
@@ -380,7 +450,9 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 - `vc_session` is not port-scoped. Two servers on `localhost` (e.g. dev and e2e) share the
   cookie name, so signing in to one replaces the other's cookie in the same browser profile.
 - Harness processes stay up while the server runs (no idle reaping yet). Each active agent
-  holds one process.
+  holds one process. Reaping a crashed run's leftovers needs `/proc` (Linux).
+- Stopping the server stops a running `speech.sh` job, but GPU servers it already started on
+  km-pc keep running (they're shared; `speech.sh down` or Settings → Voice stops them).
 - Steering (sending into a running turn; claude-agent-acp advertises it) isn't used. Prompts
   queue.
 - MCP (phase 2a): upstream servers are shared by all agents (one process/connection per server),

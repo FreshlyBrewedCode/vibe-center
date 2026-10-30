@@ -75,6 +75,7 @@ Per call the app sends the agent's voice, the STT/TTS URLs, the filler switch an
 | `{type: "text", id, text}` | reply chunk |
 | `{type: "tool", id, toolCallId, title, status: "start"\|"end"}` | a tool call: sentence break, filler trigger |
 | `{type: "permission", id, title}` | the agent waits for approval in the app (the worker says so) |
+| `{type: "waiting", id, reason: "permission"\|"busy", title}` | the prompt is queued behind another turn: one waiting for approval in the chat (sent at once), or just a busy agent (after 2.5 s). The worker says so once per reason, and a blocked prompt that times out says it's still waiting for the approval |
 | `{type: "done", id, status: "complete"\|"cancelled"\|"error", error?}` | |
 | `{type: "event", text}` | proactive event to speak (the app's `voice.speakEvent` hook) |
 | `{type: "end", reason}` | hang up |
