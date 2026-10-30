@@ -8,7 +8,9 @@ import { AgentService } from "./domain/agents.ts";
 import { ChatService } from "./domain/chat.ts";
 import { HarnessService } from "./domain/harnesses.ts";
 import { PresenceStore } from "./domain/presence.ts";
+import { WatchService } from "./domain/watches.ts";
 import { EventBus } from "./events/bus.ts";
+import { resultText } from "./mcp/gateway.ts";
 import { McpService } from "./mcp/service.ts";
 import { ProcessRegistry } from "./procs.ts";
 import { type VoiceOptions, VoiceService } from "./voice/service.ts";
@@ -38,6 +40,8 @@ export interface Services {
   setPublicUrl(url: string | null): void;
   /** Voice calls: the worker, its bridge and the calls (phase 2b). */
   voice: VoiceService;
+  /** Background waits: watches agents register, and the inbox that turns firings into turns. */
+  watches: WatchService;
   /** Process groups the server spawned (harnesses, voice worker, GPU jobs), for crash reaping. */
   procs: ProcessRegistry;
   close(): Promise<void>;
@@ -67,8 +71,28 @@ export function createServices(opts: ServicesOptions): Services {
     { repos, bus, chat, presence, dataDir: opts.dataDir, tracker: procs },
     opts.voice,
   );
-  // agent replies to an agent in a call are spoken there (2a's messenger → 2b's event hook)
-  mcp.bind({ chat, presence, speakEvent: (agentId, text, o) => voice.speakEvent(agentId, text, o) });
+  const speakEvent = (agentId: string, text: string, o: Parameters<VoiceService["speakEvent"]>[2]) =>
+    voice.speakEvent(agentId, text, o);
+  // fired watches (incl. agent replies) go into a call with the agent when there is one
+  const watches = new WatchService({
+    repos,
+    bus,
+    chat,
+    speakEvent,
+    tools: {
+      resolve(agentId, name) {
+        const tool = mcp.gateway.resolveUpstream(agentId, name);
+        return {
+          label: tool.exposedName,
+          run: async (args, o) => {
+            const r = await mcp.gateway.callInBackground(agentId, tool, args, o);
+            return { text: resultText(r), isError: !!r.isError };
+          },
+        };
+      },
+    },
+  });
+  mcp.bind({ chat, presence, speakEvent, watches });
   const services: Services = {
     dataDir: opts.dataDir,
     repos,
@@ -83,10 +107,13 @@ export function createServices(opts: ServicesOptions): Services {
     setPublicUrl(url) {
       services.publicUrl = url;
       voice.setPublicUrl(url);
+      watches.setUrls({ public: url });
     },
     voice,
+    watches,
     procs,
     async close() {
+      watches.stop();
       await voice.stop();
       await chat.dispose();
       await mcp.close();

@@ -4,10 +4,11 @@
 import type { CoreEvent } from "./core.ts";
 import type { McpEvent } from "./mcp.ts";
 import type { VoiceEvent } from "./voice.ts";
+import type { WatchEvent } from "./watches.ts";
 
-export type { CoreEvent, McpEvent, VoiceEvent };
+export type { CoreEvent, McpEvent, VoiceEvent, WatchEvent };
 
-export type ServerEvent = CoreEvent | McpEvent | VoiceEvent;
+export type ServerEvent = CoreEvent | McpEvent | VoiceEvent | WatchEvent;
 export type ServerEventType = ServerEvent["type"];
 export type EventOf<T extends ServerEventType> = Extract<ServerEvent, { type: T }>;
 

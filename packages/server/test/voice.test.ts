@@ -469,6 +469,30 @@ describe("a call through the bridge", () => {
     expect(ms.at(-1)).toMatchObject({ kind: "voice_transcript", role: "agent" });
   });
 
+  test("a watch that fires during the call is handed to the call, spoken when the line is quiet", async () => {
+    const w = app.services.watches.timer({
+      agentId: agent.id,
+      turnId: null,
+      note: "tell the user the deploy is done",
+      fireAt: Date.now() + 50,
+      label: "Deploy check",
+    });
+    const ev = await until(async () =>
+      (await frames()).find((f) => f.type === "event" && f.text?.startsWith("Deploy check is up")),
+    );
+    // nothing went into the DM before the worker found a quiet moment
+    expect((await messages(agent)).some((m) => m.data && "watch" in m.data)).toBe(false);
+    const { id } = await worker<{ id: string }>("/test/say", { text: ev.text, kind: "event" });
+    await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));
+    const ms = await messages(agent);
+    expect(ms.at(-2)).toMatchObject({
+      kind: "text",
+      text: ev.text,
+      data: { source: "event", watch: { label: "Deploy check", watchIds: [w.id] } },
+    });
+    expect(ms.at(-1)).toMatchObject({ kind: "voice_transcript", role: "agent" });
+  });
+
   test("state and latency from the worker update the call", async () => {
     await worker("/test/state", { state: "speaking" });
     await worker("/test/latency", {});

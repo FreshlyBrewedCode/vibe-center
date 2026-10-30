@@ -1,7 +1,7 @@
 import type { CallState, CallTurnLatency, CallWaiting, ServerEvent } from "@vibe-center/shared";
 import type { ServerWebSocket } from "bun";
 import type * as acp from "../acp/protocol.ts";
-import type { ChatService, PromptHandle } from "../domain/chat.ts";
+import type { ChatService, PromptHandle, PromptRequest } from "../domain/chat.ts";
 import type { EventBus } from "../events/bus.ts";
 
 /**
@@ -67,6 +67,8 @@ export function voiceNote(kind: "user" | "event", context?: string): string {
 export interface SpokenEvent {
   note?: string;
   fromAgentId?: string | null;
+  /** Fired watches it reports (see PromptRequest.watch). */
+  watch?: PromptRequest["watch"];
   onPrompt?: (handle: PromptHandle) => void;
 }
 
@@ -207,6 +209,7 @@ export class CallBridge {
         text: f.text,
         source: kind === "event" ? "event" : "voice",
         fromAgentId: ev.fromAgentId ?? null,
+        watch: ev.watch,
         display: kind === "event" ? "text" : "voice_transcript",
         replyKind: "voice_transcript",
         note: [voiceNote(kind, f.context), ev.note].filter(Boolean).join("\n"),

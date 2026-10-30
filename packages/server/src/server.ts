@@ -1,4 +1,4 @@
-import { voicePaths } from "@vibe-center/shared";
+import { voicePaths, watchPaths } from "@vibe-center/shared";
 import type { Server } from "bun";
 import { Hono } from "hono";
 import type { McpProvider } from "./acp/mcp.ts";
@@ -6,6 +6,7 @@ import type { RuntimeTimeouts } from "./acp/runtime.ts";
 import { createApi } from "./http/api.ts";
 import { createMcpApi } from "./http/mcp-api.ts";
 import { staticHandler, WEB_DIST } from "./http/static.ts";
+import { createWatchApi } from "./http/watch-api.ts";
 import { type WsData, WsHub } from "./http/ws.ts";
 import { GATEWAY_PATH } from "./mcp/gateway.ts";
 import { createServices, type Services } from "./services.ts";
@@ -56,6 +57,7 @@ export function createServer(opts: ServerOptions): AppServer {
   app.route("/api/voice", createVoiceApi(services));
   app.route("/api", createApi(services));
   app.route("/api", createMcpApi(services));
+  app.route("/api", createWatchApi(services));
   const serveStatic = opts.webDist === null ? null : staticHandler(opts.webDist ?? WEB_DIST);
 
   const voice = services.voice;
@@ -68,6 +70,7 @@ export function createServer(opts: ServerOptions): AppServer {
       if (pathname === "/ws") return hub.upgrade(req, srv as Server<WsData>);
       if (pathname === voicePaths.bridge) return voice.upgrade(req, srv as Server<BridgeSocketData>);
       if (pathname === GATEWAY_PATH) return services.mcp.gateway.handle(req);
+      if (pathname.startsWith(watchPaths.hookPrefix)) return services.watches.handleWebhook(req);
       if (pathname.startsWith("/api/") || pathname === "/api") return app.fetch(req);
       if (serveStatic) return serveStatic(req);
       return new Response("not found", { status: 404 });
@@ -92,6 +95,9 @@ export function createServer(opts: ServerOptions): AppServer {
   void voice.start(server.port!);
   const port = server.port!;
   services.mcp.gateway.setBaseUrl(`http://127.0.0.1:${port}`);
+  services.watches.setUrls({ base: `http://127.0.0.1:${port}` });
+  // timers and webhooks of earlier runs re-armed; interrupted background calls reported
+  services.watches.start();
   if (opts.probeOnStart) {
     services.harnesses.probeAll();
     services.mcp.connectAll();

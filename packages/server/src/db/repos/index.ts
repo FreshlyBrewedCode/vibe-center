@@ -7,6 +7,7 @@ import { AgentToolRepo, McpOAuthRepo, McpServerRepo, ToolCallRepo } from "./mcp-
 import { MemoryRepo } from "./memories.ts";
 import { MessageSearchRepo } from "./message-search.ts";
 import { MessageRepo } from "./messages.ts";
+import { WatchRepo } from "./watches.ts";
 
 export type Repos = ReturnType<typeof createRepos>;
 
@@ -24,5 +25,6 @@ export function createRepos(db: Db) {
     toolCalls: new ToolCallRepo(db),
     memories: new MemoryRepo(db),
     messageSearch: new MessageSearchRepo(db),
+    watches: new WatchRepo(db),
   };
 }

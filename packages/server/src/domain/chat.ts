@@ -29,6 +29,8 @@ export interface PromptRequest {
   source: TurnSource;
   /** Sending agent, for source "agent". */
   fromAgentId?: string | null;
+  /** Fired watches this `event` prompt reports (shown on the prompt message). */
+  watch?: TurnMeta["watch"];
   /**
    * How the prompt shows in the DM: a `text` message (default), a `voice_transcript` (calls), or
    * not at all (`hidden`, e.g. a warm-up prompt).
@@ -75,6 +77,7 @@ export class ChatService {
   private onStart = new Map<string, () => void>();
   /** Agents being deleted: they take no prompts, so nothing can spawn their harness again. */
   private retired = new Set<string>();
+  private turnEndListeners = new Set<(agentId: string, turnId: string) => void>();
 
   constructor(
     private readonly repos: Repos,
@@ -96,7 +99,11 @@ export class ChatService {
     const turnId = this.repos.conversations.createTurn(session.id, req.source, req.fromAgentId ?? null);
     let message: Message | null = null;
     if (req.display !== "hidden") {
-      const data: TurnMeta = { source: req.source, fromAgentId: req.fromAgentId ?? null };
+      const data: TurnMeta = {
+        source: req.source,
+        fromAgentId: req.fromAgentId ?? null,
+        ...(req.watch ? { watch: req.watch } : {}),
+      };
       message = this.repos.messages.insert({
         conversationId: conversation.id,
         sessionId: session.id,
@@ -164,6 +171,17 @@ export class ChatService {
   /** What a turn waits for: a permission request, or other turns ahead of it (see AgentRuntime). */
   waitState(agentId: string, turnId: string): { permission: string | null; blockedBy: string | null } | null {
     return this.runtimes.get(agentId)?.waitState(turnId) ?? null;
+  }
+
+  /** True while the agent has a turn running or queued. */
+  busy(agentId: string): boolean {
+    return this.runtimes.get(agentId)?.busy ?? false;
+  }
+
+  /** Called after every turn of any agent ended (recorded and stored). Returns an unsubscribe. */
+  onTurnEnd(listener: (agentId: string, turnId: string) => void): () => void {
+    this.turnEndListeners.add(listener);
+    return () => this.turnEndListeners.delete(listener);
   }
 
   /** Cancel one turn (running or queued) of an agent without touching its other turns. */
@@ -337,6 +355,7 @@ export class ChatService {
         const text = rec?.end(e.result) ?? "";
         this.repos.conversations.endTurn(e.turnId, e.result.status, e.result.stopReason, e.result.error);
         this.replies.set(e.turnId, text);
+        for (const l of this.turnEndListeners) l(agentId, e.turnId);
         return;
       }
       case "session.ready":

@@ -194,7 +194,7 @@ describe("MCP servers and tool selection", () => {
       return s.status.state === "connected" ? s : null;
     });
     const s = connected;
-    expect(s.tools.map((t) => t.name).sort()).toEqual(["add", "echo", "env", "fail", "grow"]);
+    expect(s.tools.map((t) => t.name).sort()).toEqual(["add", "echo", "env", "fail", "grow", "wait"]);
     expect(s.status.serverInfo?.name).toBe("test-upstream");
     const raw = await (await fetch(`${base}/api/mcp/servers`, { headers: { cookie } })).text();
     expect(raw).not.toContain("supersecret");

@@ -15,7 +15,7 @@ import {
 } from "./builtin/index.ts";
 import type { ExposedTool, ToolCatalog } from "./catalog.ts";
 import type { CallRecorder } from "./recorder.ts";
-import { errorText, type UpstreamPool } from "./upstream.ts";
+import { type CallOptions, errorText, type UpstreamPool } from "./upstream.ts";
 
 /** Name of the gateway in every session: Claude Code shows its tools as `mcp__vibe__<tool>`. */
 export const GATEWAY_NAME = "vibe";
@@ -249,6 +249,51 @@ export class McpGateway implements McpProvider {
     return result;
   }
 
+  /**
+   * Run an upstream tool for an agent outside of any turn (a `call_in_background` watch): the
+   * same selection check and call log as a harness's call, a longer timeout, cancellable.
+   * `name` is the gateway name (`<server>__<tool>`); Claude Code's `mcp__vibe__` and OpenCode's
+   * `vibe_` prefixes are accepted too. Throws ToolError if the agent can't use it.
+   */
+  resolveUpstream(agentId: string, name: string): ExposedTool {
+    const bare = name.replace(new RegExp(`^(mcp__${GATEWAY_NAME}__|${GATEWAY_NAME}_)`), "");
+    const tool = this.catalog.enabled(agentId).find((t) => t.exposedName === bare);
+    if (!tool) {
+      throw new ToolError(
+        `the tool "${name}" is not available to you (not enabled, or it doesn't exist). Use the name of one of your <server>__<tool> tools.`,
+      );
+    }
+    if (tool.server.id === BUILTIN_SERVER_ID) {
+      throw new ToolError(`"${bare}" is one of the app's own tools; call it directly, it returns at once.`);
+    }
+    return tool;
+  }
+
+  async callInBackground(
+    agentId: string,
+    tool: ExposedTool,
+    args: Record<string, unknown>,
+    opts: CallOptions,
+  ): Promise<ToolResult> {
+    const rec = this.repos.toolCalls.start({
+      agentId,
+      sessionId: null,
+      turnId: null,
+      serverId: tool.server.id,
+      server: tool.server.name,
+      tool: tool.tool.name,
+      args,
+    });
+    let result: ToolResult;
+    try {
+      result = await this.upstreams.call(tool.server, tool.tool.name, args, opts);
+    } catch (e) {
+      result = errorResult(`${tool.server.name} failed: ${errorText(e)}`);
+    }
+    this.repos.toolCalls.finish(rec.callId, resultText(result), !!result.isError);
+    return result;
+  }
+
   private async runBuiltin(tool: ExposedTool, args: Record<string, unknown>, ctx: ToolContext) {
     const impl = this.builtins().get(tool.tool.name);
     if (!impl) throw new ToolError(`unknown built-in tool ${tool.tool.name}`);
@@ -262,7 +307,7 @@ function errorResult(message: string): ToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
-function resultText(r: ToolResult): string {
+export function resultText(r: ToolResult): string {
   const parts = (r.content ?? []).map((c) => (c.type === "text" ? c.text : `[${c.type}]`));
   const s = parts.join("\n");
   return s.length > 20_000 ? `${s.slice(0, 20_000)}…` : s;

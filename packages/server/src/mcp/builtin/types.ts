@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Repos } from "../../db/repos/index.ts";
 import type { ChatService, PromptHandle } from "../../domain/chat.ts";
 import type { PresenceStore } from "../../domain/presence.ts";
+import type { WatchService } from "../../domain/watches.ts";
 import type { EventBus } from "../../events/bus.ts";
 
 /** Who is calling a built-in tool: the agent and the app session/turn its harness is in. */
@@ -23,6 +24,8 @@ export interface BuiltinDeps {
    * Phase 2b's hook: deliver an event into a running call with the agent (spoken when the line is
    * quiet; `onPrompt` gets the turn once it is prompted). Returns false when there is no call.
    */
+  /** Background waits; agent replies go through it too. */
+  watches?: WatchService;
   speakEvent?: (
     agentId: string,
     text: string,

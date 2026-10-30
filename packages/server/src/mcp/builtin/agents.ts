@@ -51,6 +51,20 @@ export class AgentMessenger {
     }
     this.pending.set(from.id, waiting + 1);
     this.hops.set(handle.turnId, hop);
+    // the sender's "waiting on" shows it; the reply comes back through the watch inbox
+    let watchId: string | null = null;
+    try {
+      watchId =
+        this.d.watches?.agentReply({
+          agentId: from.id,
+          turnId: fromTurnId,
+          note: message.length > 1000 ? `${message.slice(0, 1000)}…` : message,
+          toAgentId: to.id,
+          toName: to.name,
+        }).id ?? null;
+    } catch (e) {
+      console.error("could not record the reply watch", e);
+    }
 
     void handle.done
       .then((r) => {
@@ -58,9 +72,11 @@ export class AgentMessenger {
           r.status === "complete"
             ? r.text.trim() || "(no text reply)"
             : `(${to.name} could not answer: ${r.error ?? r.status})`;
-        this.deliver(from, to, message, reply, hop);
+        this.deliver(from, to, message, reply, hop, watchId);
       })
-      .catch((e) => this.deliver(from, to, message, `(${to.name} could not answer: ${String(e)})`, hop))
+      .catch((e) =>
+        this.deliver(from, to, message, `(${to.name} could not answer: ${String(e)})`, hop, watchId),
+      )
       .finally(() => {
         this.hops.delete(handle.turnId);
         const n = (this.pending.get(from.id) ?? 1) - 1;
@@ -70,15 +86,28 @@ export class AgentMessenger {
     return { hop };
   }
 
-  private deliver(from: Agent, to: Agent, original: string, reply: string, hop: number): void {
+  private deliver(
+    from: Agent,
+    to: Agent,
+    original: string,
+    reply: string,
+    hop: number,
+    watchId: string | null,
+  ): void {
     if (!this.d.repos.agents.get(from.id)) return; // sender deleted meanwhile
     const quoted = original.length > 200 ? `${original.slice(0, 200)}…` : original;
     const note = `[Reply from the agent "${to.name}" to the message you sent with send_message_to_agent: "${quoted}". Continue with what you were doing for the user; tell them the outcome if it matters.]`;
     const track = (handle: PromptHandle) => {
-      this.hops.set(handle.turnId, hop);
+      // several events in one turn: the deepest chain counts
+      this.hops.set(handle.turnId, Math.max(hop, this.hops.get(handle.turnId) ?? 0));
       void handle.done.finally(() => this.hops.delete(handle.turnId));
     };
     try {
+      // the watch inbox: now if the sender is idle, else after its turns, or spoken in a call
+      if (watchId && this.d.watches) {
+        this.d.watches.fire(watchId, reply, { note, fromAgentId: to.id, onPrompt: track });
+        return;
+      }
       // in a call with the sender: spoken there once nobody is talking (same turn otherwise)
       if (this.d.speakEvent?.(from.id, reply, { note, fromAgentId: to.id, onPrompt: track })) return;
       track(this.d.chat.prompt(from.id, { text: reply, source: "event", fromAgentId: to.id, note }));

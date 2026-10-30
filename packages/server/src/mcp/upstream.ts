@@ -14,6 +14,12 @@ const CONNECT_TIMEOUT_MS = 30_000;
 /** Upstream tool calls can be long (builds, browsers); progress notifications extend it. */
 const CALL_TIMEOUT_MS = 10 * 60_000;
 
+/** Background calls (watches) wait longer than a turn would, and can be cancelled. */
+export interface CallOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
 export interface UpstreamEvents {
   status(serverId: string, status: McpServerStatus): void;
   tools(serverId: string, tools: McpToolInfo[]): void;
@@ -133,11 +139,12 @@ class Upstream {
     this.events.tools(this.record.id, tools);
   }
 
-  async call(name: string, args: Record<string, unknown>): Promise<ToolResult> {
+  async call(name: string, args: Record<string, unknown>, opts: CallOptions = {}): Promise<ToolResult> {
     const client = await this.connect();
     const res = await client.callTool({ name, arguments: args }, undefined, {
-      timeout: CALL_TIMEOUT_MS,
+      timeout: opts.timeoutMs ?? CALL_TIMEOUT_MS,
       resetTimeoutOnProgress: true,
+      signal: opts.signal,
     });
     return res as ToolResult; // `toolResult` (pre-2024 servers) is not supported
   }
@@ -187,8 +194,13 @@ export class UpstreamPool {
     await this.get(record).connect();
   }
 
-  async call(record: McpServerRecord, tool: string, args: Record<string, unknown>): Promise<ToolResult> {
-    return this.get(record).call(tool, args);
+  async call(
+    record: McpServerRecord,
+    tool: string,
+    args: Record<string, unknown>,
+    opts?: CallOptions,
+  ): Promise<ToolResult> {
+    return this.get(record).call(tool, args, opts);
   }
 
   /** Disconnect (stops a stdio server's process). The next use connects again. */

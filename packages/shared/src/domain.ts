@@ -228,6 +228,8 @@ export interface TurnMeta {
    * text, but the user may not have heard all of it.
    */
   interrupted?: boolean;
+  /** Set on an `event` prompt from fired watches (background waits): what fired. */
+  watch?: { label: string; watchIds: Id[] };
 }
 
 interface MessageBase {
@@ -280,4 +282,42 @@ export interface MessageSearchHit {
   agentId: Id;
   /** Snippet with matches wrapped in <mark></mark>. */
   snippet: string;
+}
+
+// ---- background waits (watches) ---------------------------------------------------------------
+
+/**
+ * What a watch waits for: a timer, a tool call the app runs in the background (e.g. T3's
+ * wait-for-thread), another agent's reply to `send_message_to_agent`, or a request to a webhook.
+ */
+export type WatchKind = "timer" | "tool" | "agent_reply" | "webhook";
+
+/** `active` until it fires (`fired`; a repeating webhook stays active), or ends otherwise. */
+export type WatchStatus = "active" | "fired" | "cancelled" | "expired" | "failed";
+
+/**
+ * A durable background wait an agent registered: the app does the waiting and starts a new turn
+ * of the agent (an `event` prompt) when it fires. Owned by the agent, not its session.
+ */
+export interface Watch {
+  id: Id;
+  agentId: Id;
+  kind: WatchKind;
+  /** Short human description: "Timer: 10 min", "t3__wait_for_thread", "Reply from Bob", … */
+  label: string;
+  /** Why the agent cares, in its own words; sent back to it when the watch fires. */
+  note: string;
+  status: WatchStatus;
+  /** Timers: when it fires. */
+  fireAt: Timestamp | null;
+  /** It expires (and the agent is told) if it hasn't fired by then. */
+  expiresAt: Timestamp | null;
+  /** Webhooks: keep firing on every request until cancelled or expired. */
+  repeat: boolean;
+  fireCount: number;
+  /** Last firing's (or the failure's) text, shortened. */
+  outcome: string | null;
+  createdAt: Timestamp;
+  /** Last change: fired, cancelled, expired. */
+  updatedAt: Timestamp;
 }
