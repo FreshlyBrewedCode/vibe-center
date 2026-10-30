@@ -620,6 +620,10 @@ export class McpOAuth {
   private async doRefresh(r: McpServerRecord, used: StoredTokens): Promise<StoredTokens> {
     const state = this.load(r.id);
     if (!state.metadata || !used.refresh_token) this.needsSignIn(r, "Sign in to connect.");
+    // A refresh token only ever goes back to the authorization server that issued it.
+    if (state.metadata.issuer !== used.issuer) {
+      this.needsSignIn(r, "The server's authorization server changed. Sign in again.");
+    }
     try {
       const tokens = await refreshAuthorization(state.metadata.issuer, {
         metadata: state.metadata,
