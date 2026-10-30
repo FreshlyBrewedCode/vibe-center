@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, useRouteContext, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { CommandPalette } from "@/components/command-palette";
+import { ConnectionStatus } from "@/components/connection-status";
 import { MobileNav } from "@/components/mobile-nav";
 import { Sidebar } from "@/components/sidebar";
 import { useLiveEvents } from "@/lib/events";
@@ -53,6 +54,7 @@ function SignedIn({ deviceId }: { deviceId: string }) {
         <Outlet />
       </main>
       <CommandPalette />
+      <ConnectionStatus />
     </div>
   );
 }

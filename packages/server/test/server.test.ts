@@ -304,3 +304,41 @@ describe("chat against the fake harness", () => {
     expect((await rawApi("/api/agents")).status).toBe(401);
   });
 });
+
+describe("event channel heartbeat", () => {
+  test("a client that stops pinging is dropped; one that pings stays", async () => {
+    const quick = createServer({ dataDir, port: 0, webDist: null, wsSilentMs: 300 });
+    try {
+      const url = `ws://127.0.0.1:${quick.port}/ws`;
+      const token = quick.services.auth.mintLinkToken();
+      const res = await fetch(`http://127.0.0.1:${quick.port}/api/auth/exchange`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const c = res.headers.get("set-cookie")!.split(";")[0]!;
+      const open = (ping: boolean) => {
+        const ws = new WebSocket(url, { headers: { cookie: c } } as never);
+        let timer: ReturnType<typeof setInterval> | undefined;
+        ws.onopen = () => {
+          if (ping) timer = setInterval(() => ws.send(JSON.stringify({ type: "ping" })), 50);
+        };
+        const closed = new Promise<boolean>((r) => {
+          ws.onclose = () => {
+            clearInterval(timer);
+            r(true);
+          };
+        });
+        return { ws, closed, stop: () => clearInterval(timer) };
+      };
+      const silent = open(false);
+      const alive = open(true);
+      expect(await silent.closed).toBe(true);
+      expect(await Promise.race([alive.closed, Bun.sleep(600).then(() => false)])).toBe(false);
+      alive.stop();
+      alive.ws.close();
+    } finally {
+      await quick.stop();
+    }
+  });
+});

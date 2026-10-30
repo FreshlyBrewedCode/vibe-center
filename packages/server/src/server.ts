@@ -31,6 +31,8 @@ export interface ServerOptions {
   probeOnStart?: boolean;
   /** Voice worker management (phase 2b). The CLI autostarts the managed worker. */
   voice?: VoiceOptions;
+  /** Drop an event socket whose client sent nothing for this long (default `WS_SILENT_MS`). */
+  wsSilentMs?: number;
 }
 
 export interface AppServer {
@@ -49,7 +51,7 @@ export function createServer(opts: ServerOptions): AppServer {
     timeouts: opts.timeouts,
     voice: opts.voice,
   });
-  const hub = new WsHub(services);
+  const hub = new WsHub(services, opts.wsSilentMs);
   const app = new Hono();
   app.route("/api/voice", createVoiceApi(services));
   app.route("/api", createApi(services));

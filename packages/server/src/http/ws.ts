@@ -6,13 +6,19 @@ import { originAllowed } from "./origin.ts";
 
 export interface WsData {
   deviceId: string;
+  /** Last frame from the client (its heartbeat pings, every 10 s while the tab runs). */
+  lastSeen?: number;
 }
 
 const ALL = "events";
+/** A client silent this long is gone (a frozen tab, a dropped network): drop its socket. */
+export const WS_SILENT_MS = 45_000;
 
 /**
  * The live-update channel: one socket per open tab, every ServerEvent goes to every device
- * (single user). Clients only send keep-alive pings; mutations go through HTTP. A revoked
+ * (single user). Clients only send heartbeat pings; mutations go through HTTP. A socket whose
+ * client stopped pinging is terminated, so a half-dead connection (a phone that locked its
+ * screen) doesn't linger; the client reconnects and resyncs when it runs again. A revoked
  * device's sockets are closed after it got the `device.revoked` event.
  */
 export class WsHub {
@@ -20,9 +26,14 @@ export class WsHub {
   private sockets = new Map<string, Set<ServerWebSocket<WsData>>>();
   private readonly startedAt = Date.now();
   private unsubscribe: () => void;
+  private sweep: ReturnType<typeof setInterval>;
 
-  constructor(private readonly s: Services) {
+  constructor(
+    private readonly s: Services,
+    private readonly silentMs = WS_SILENT_MS,
+  ) {
     this.unsubscribe = s.bus.subscribe((event) => this.broadcast(event));
+    this.sweep = setInterval(() => this.dropSilent(), Math.max(50, silentMs / 3));
   }
 
   attach(server: Server<WsData>): void {
@@ -42,6 +53,7 @@ export class WsHub {
   readonly handler: WebSocketHandler<WsData> = {
     data: {} as WsData,
     open: (ws) => {
+      ws.data.lastSeen = Date.now();
       ws.subscribe(ALL);
       const set = this.sockets.get(ws.data.deviceId) ?? new Set();
       set.add(ws);
@@ -49,6 +61,7 @@ export class WsHub {
       send(ws, { type: "hello", deviceId: ws.data.deviceId, serverStartedAt: this.startedAt });
     },
     message: (ws, raw) => {
+      ws.data.lastSeen = Date.now();
       let frame: ClientFrame | null = null;
       try {
         frame = JSON.parse(String(raw)) as ClientFrame;
@@ -61,8 +74,20 @@ export class WsHub {
   };
 
   close(): void {
+    clearInterval(this.sweep);
     this.unsubscribe();
     for (const set of this.sockets.values()) for (const ws of set) ws.close(1001, "server stopping");
+  }
+
+  private dropSilent(): void {
+    const cutoff = Date.now() - this.silentMs;
+    for (const set of this.sockets.values()) {
+      for (const ws of set) {
+        if ((ws.data.lastSeen ?? 0) >= cutoff) continue;
+        set.delete(ws);
+        ws.terminate();
+      }
+    }
   }
 
   private broadcast(event: ServerEvent): void {
