@@ -1,14 +1,21 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Info, Pencil, SquarePen } from "lucide-react";
+import { ChevronLeft, Info, MoreHorizontal, Pencil, SquarePen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AgentAvatar, presenceLabel } from "@/components/agent-avatar";
+import { AgentAvatar, statusLine } from "@/components/agent-avatar";
 import { DetailsPanel } from "@/components/details-panel";
 import { Composer } from "@/components/dm/composer";
 import { MessageList } from "@/components/dm/message-list";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CallBar, CallButton } from "@/components/voice/call";
+import { CallButton, CallTimer, CallUi, useAgentCall } from "@/components/voice/call";
+import { useIsMobile } from "@/lib/media";
 import {
   ensureMessageLoaded,
   queryClient,
@@ -19,6 +26,7 @@ import {
   useMessages,
   useNewSession,
 } from "@/lib/queries";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/agents/$agentId/")({
   validateSearch: (search: Record<string, unknown>): { at?: number } => ({
@@ -37,11 +45,12 @@ function DmPage() {
   return <Dm key={agent.id} agent={agent} jumpToSeq={at} />;
 }
 
-function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgent>>; jumpToSeq?: number }) {
+type Agent = NonNullable<ReturnType<typeof useAgent>>;
+
+function Dm({ agent, jumpToSeq }: { agent: Agent; jumpToSeq?: number }) {
   const navigate = Route.useNavigate();
   const messages = useMessages(agent.conversationId);
   const harnesses = useHarnesses();
-  const newSession = useNewSession(agent.conversationId);
   const markRead = useMarkRead(agent.conversationId);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [pendingJump, setPendingJump] = useState<number | null | undefined>(jumpToSeq);
@@ -74,51 +83,17 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
   }, [jumpToSeq, agent.conversationId]);
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-          {/* The agent's name already shows in the mobile top bar (MobileNav); avoid repeating it. */}
-          <div className="hidden min-w-0 flex-1 items-center gap-3 sm:flex">
-            <AgentAvatar avatar={agent.avatar} presence={agent.presence} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-semibold text-sm">{agent.name}</div>
-              <div data-testid="presence" className="truncate text-muted-foreground text-xs">
-                {presenceLabel[agent.presence]}
-                {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 sm:hidden" />
-          <CallButton agent={agent} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={newSession.isPending}
-                onClick={() => newSession.mutate(undefined, { onError: (e) => toast.error(e.message) })}
-              >
-                <SquarePen className="size-4" />
-                <span className="max-sm:hidden">New session</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Start a fresh harness session; history stays here</TooltipContent>
-          </Tooltip>
-          <Button asChild variant="ghost" size="icon" aria-label="Edit agent">
-            <Link to="/agents/$agentId/edit" params={{ agentId: agent.id }}>
-              <Pencil className="size-4" />
-            </Link>
-          </Button>
-          <Button
-            variant={detailsOpen ? "secondary" : "ghost"}
-            size="icon"
-            aria-label="Agent details"
-            onClick={() => setDetailsOpen((v) => !v)}
-          >
-            <Info className="size-4" />
-          </Button>
-        </header>
-        <CallBar agent={agent} />
+    <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <DmHeader
+          agent={agent}
+          harnessName={harness?.name}
+          detailsOpen={detailsOpen}
+          onToggleDetails={() => setDetailsOpen((v) => !v)}
+        />
+        {/* The call UI: a floating card over the thread on desktop; on the phone a strip under
+            the header plus a full-screen sheet. Rendered here so the strip sits in the column. */}
+        <CallUi agent={agent} />
         {messages.isError ? (
           <p className="flex-1 p-6 text-destructive text-sm">{messages.error.message}</p>
         ) : (
@@ -144,5 +119,134 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
       </div>
       {detailsOpen && <DetailsPanel agent={agent} onClose={() => setDetailsOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * Sticky 56px header. Phone: back chevron, avatar with the presence ring, name and state, Call,
+ * Details and a "more" menu (new session, edit). Desktop: the same without the chevron, plus the
+ * harness · model pill, and the actions as their own buttons.
+ */
+function DmHeader({
+  agent,
+  harnessName,
+  detailsOpen,
+  onToggleDetails,
+}: {
+  agent: Agent;
+  harnessName?: string;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
+}) {
+  const mobile = useIsMobile();
+  const call = useAgentCall(agent.id);
+  const newSession = useNewSession(agent.conversationId);
+  const s = statusLine(agent);
+  const startSession = () => newSession.mutate(undefined, { onError: (e) => toast.error(e.message) });
+  return (
+    <header className="flex h-14 shrink-0 items-center gap-3 border-line border-b bg-background/90 px-2 backdrop-blur sm:px-5">
+      {mobile && (
+        <Button asChild variant="ghost" size="round" className="-mr-1">
+          <Link to="/" aria-label="Back to agents">
+            <ChevronLeft className="size-6" />
+          </Link>
+        </Button>
+      )}
+      <AgentAvatar avatar={agent.avatar} presence={agent.presence} size={mobile ? 34 : 32} />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate font-semibold text-sm">{agent.name}</div>
+        <div
+          data-testid="presence"
+          className={cn("flex items-center gap-1.5 truncate text-xs", call ? "text-call" : s.className)}
+        >
+          {call ? (
+            <>
+              <span className="size-1.5 shrink-0 animate-vc-pulse rounded-full bg-call" />
+              <span className="truncate">In a call</span>
+              <span aria-hidden>·</span>
+              <CallTimer since={call.startedAt} className="text-call" />
+            </>
+          ) : (
+            <span className="truncate">{s.text}</span>
+          )}
+        </div>
+      </div>
+      {!mobile && (harnessName || agent.model) && (
+        <span className="mr-1 hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-muted-foreground text-xs lg:flex">
+          {[harnessName, agent.model].filter(Boolean).join(" · ")}
+        </span>
+      )}
+      <CallButton agent={agent} />
+      {mobile ? (
+        <>
+          <Button
+            variant={detailsOpen ? "soft" : "ghost"}
+            size="round"
+            aria-label="Agent details"
+            onClick={onToggleDetails}
+          >
+            <Info className="size-[18px]" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="round" aria-label="More">
+                <MoreHorizontal className="size-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem disabled={newSession.isPending} onSelect={startSession}>
+                <SquarePen /> New session
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/agents/$agentId/edit" params={{ agentId: agent.id }}>
+                  <Pencil /> Edit agent
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      ) : (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="quiet"
+                size="icon"
+                aria-label="New session"
+                disabled={newSession.isPending}
+                onClick={startSession}
+              >
+                <SquarePen className="size-[18px]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>New session: a fresh harness session; history stays here</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button asChild variant="quiet" size="icon">
+                <Link to="/agents/$agentId/edit" params={{ agentId: agent.id }} aria-label="Edit agent">
+                  <Pencil className="size-[18px]" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Edit agent</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={detailsOpen ? "soft" : "quiet"}
+                size="icon"
+                aria-label="Agent details"
+                aria-pressed={detailsOpen}
+                onClick={onToggleDetails}
+              >
+                <Info className="size-[18px]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Details</TooltipContent>
+          </Tooltip>
+        </>
+      )}
+    </header>
   );
 }

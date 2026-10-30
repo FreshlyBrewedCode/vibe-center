@@ -1,27 +1,25 @@
 import { Link } from "@tanstack/react-router";
-import { PhoneOff } from "lucide-react";
+import { PhoneOff, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAgent, useCalls, useMe } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "../agent-avatar";
-import { reportFailure, stateDot, stateLabel, usePendingPermission } from "./call";
+import { CallTimer, reportFailure, stateLabel, usePendingPermission } from "./call";
 import { hangUp, useLocalCall } from "./call-client";
 
 /**
  * A call keeps running when you leave its DM (one call at a time, see ARCHITECTURE's "known
- * gaps"). This shows it everywhere else: sidebar and mobile top bar, with hang-up and a link back
- * to the DM. `exceptAgentId` hides it where the DM's own `CallBar` already shows the same call.
+ * gaps"). This shows it everywhere else: the sidebar (rail or list) and, on the phone, a strip
+ * above the current screen, each with a link back to the DM and hang-up. `exceptAgentId` hides it
+ * where the DM's own call UI already shows the same call.
  */
 export function GlobalCallIndicator({
   exceptAgentId,
-  onNavigate,
-  compact = false,
-  className,
+  variant,
 }: {
   exceptAgentId?: string;
-  onNavigate?: () => void;
-  compact?: boolean;
-  className?: string;
+  variant: "rail" | "list" | "mobile";
 }) {
   const call = useCalls().data?.[0];
   const me = useMe();
@@ -38,51 +36,76 @@ export function GlobalCallIndicator({
       : call.deviceId === me.data?.id
         ? `${stateLabel[call.state]} · audio in another tab`
         : "On another device";
+  const presence = permission ? "waiting" : "in_call";
+  const hangup = (
+    <Button
+      variant="destructive"
+      size={variant === "rail" ? "icon-xs" : "icon-sm"}
+      className="shrink-0 rounded-full"
+      aria-label="Hang up"
+      onClick={() => hangUp(call.id).catch(reportFailure("hang up"))}
+    >
+      <PhoneOff className={variant === "rail" ? "size-3" : "size-3.5"} />
+    </Button>
+  );
+
+  if (variant === "rail") {
+    return (
+      <div
+        data-testid="global-call-indicator"
+        className="mx-2 flex flex-col items-center gap-1.5 rounded-[14px] border border-line bg-card py-2"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link to="/agents/$agentId" params={{ agentId: agent.id }} className="rounded-full">
+              <AgentAvatar avatar={agent.avatar} presence={presence} size={30} surface="var(--card)" />
+              <span className="sr-only">
+                {agent.name}: {status}
+              </span>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="px-3 py-2">
+            <span className="font-semibold">{agent.name}</span>
+            <span className={cn("ml-2", permission ? "text-presence-waiting" : "text-call")}>{status}</span>
+          </TooltipContent>
+        </Tooltip>
+        <CallTimer since={call.startedAt} className="text-2xs" />
+        {hangup}
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="global-call-indicator"
       className={cn(
-        "flex items-center gap-2 border-t px-3 py-2",
-        compact ? "max-md:justify-center max-md:px-0" : "",
-        className,
+        "flex items-center gap-3 border-line bg-card",
+        variant === "list" ? "mx-2 rounded-[14px] border py-2 pr-2 pl-2.5" : "border-b px-3 py-2",
       )}
     >
       <Link
         to="/agents/$agentId"
         params={{ agentId: agent.id }}
-        onClick={onNavigate}
-        className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden"
+        className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden"
       >
-        <span className="relative shrink-0">
-          <AgentAvatar avatar={agent.avatar} size="sm" />
+        <AgentAvatar avatar={agent.avatar} presence={presence} size={32} surface="var(--card)" />
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="flex items-baseline gap-2">
+            <span className="truncate font-medium text-sm">{agent.name}</span>
+            <CallTimer since={call.startedAt} className="text-xs" />
+          </span>
           <span
             className={cn(
-              "-right-0.5 -bottom-0.5 absolute size-2.5 rounded-full ring-2 ring-sidebar",
-              stateDot[call.state],
-            )}
-          />
-        </span>
-        <span className={cn("min-w-0 flex-1", compact && "max-md:hidden")}>
-          <span className="block truncate font-medium text-sm leading-tight">{agent.name}</span>
-          <span
-            className={cn(
-              "block truncate text-xs leading-tight",
-              permission ? "font-medium text-foreground" : "text-muted-foreground",
+              "flex items-center gap-1 truncate text-xs",
+              permission ? "font-medium text-presence-waiting" : "text-call",
             )}
           >
+            {permission && <ShieldAlert className="size-3" />}
             {status}
           </span>
         </span>
       </Link>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0"
-        aria-label="Hang up"
-        onClick={() => hangUp(call.id).catch(reportFailure("hang up"))}
-      >
-        <PhoneOff className="size-4 text-destructive" />
-      </Button>
+      {hangup}
     </div>
   );
 }

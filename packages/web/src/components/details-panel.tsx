@@ -10,14 +10,14 @@ import {
   useNewSession,
   useSaveAgent,
 } from "@/lib/queries";
-import { AgentAvatar, presenceLabel } from "./agent-avatar";
+import { AgentAvatar, presenceLabel, presenceTextClass } from "./agent-avatar";
 import { HealthBadge } from "./health-badge";
 import { Button } from "./ui/button";
 import { usePreviewVoice, voiceName } from "./voice/voice-picker";
 
 /**
  * The on-demand details panel for a DM: agent info, current session, model/harness, tools,
- * voice, quick actions.
+ * voice, quick actions. A 320px panel beside the thread; full-screen over it on the phone.
  */
 export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: () => void }) {
   const conversation = useConversation(agent.conversationId);
@@ -34,19 +34,22 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
   );
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-20 max-sm:w-full max-sm:bg-background">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+    <aside className="vc-scroll flex w-80 shrink-0 flex-col overflow-y-auto border-line border-l bg-panel max-sm:absolute max-sm:inset-0 max-sm:z-20 max-sm:w-full max-sm:bg-background">
+      <div className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between border-line border-b bg-panel/90 px-4 backdrop-blur max-sm:bg-background/90">
         <h2 className="font-semibold text-sm">Details</h2>
-        <Button variant="ghost" size="icon" aria-label="Close details" onClick={onClose}>
-          <X className="size-4" />
+        <Button variant="quiet" size="icon" aria-label="Close details" onClick={onClose}>
+          <X className="size-[18px]" />
         </Button>
       </div>
-      <div className="space-y-5 p-4">
-        <div className="flex items-center gap-3">
-          <AgentAvatar avatar={agent.avatar} presence={agent.presence} size="lg" />
+      <div className="space-y-6 p-4">
+        <div className="flex items-center gap-3.5">
+          <AgentAvatar avatar={agent.avatar} presence={agent.presence} size={44} surface="var(--panel)" />
           <div className="min-w-0">
-            <div className="truncate font-semibold">{agent.name}</div>
-            <div className="text-muted-foreground text-xs">{presenceLabel[agent.presence]}</div>
+            <div className="truncate font-semibold text-[15px]">{agent.name}</div>
+            <div className={`text-xs ${presenceTextClass[agent.presence]}`}>
+              {presenceLabel[agent.presence]}
+              {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
+            </div>
           </div>
         </div>
         {agent.description && <p className="text-muted-foreground text-sm">{agent.description}</p>}
@@ -55,7 +58,7 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
           <Row label="Harness" value={harness?.name ?? agent.harnessId} />
           {harness && <Row label="Health" value={<HealthBadge health={harness.health} />} />}
           <Row label="Model" value={agent.model ?? "Harness default"} />
-          <Row label="Working dir" value={<code className="text-xs">{agent.cwd}</code>} />
+          <Row label="Working dir" value={<code className="font-mono text-xs">{agent.cwd}</code>} />
         </Section>
 
         <Section title="Current session">
@@ -64,7 +67,7 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
               <Row label="Started" value={new Date(session.startedAt).toLocaleString()} />
               <Row
                 label="ACP session"
-                value={<code className="text-xs">{session.acpSessionId ?? "—"}</code>}
+                value={<code className="font-mono text-xs">{session.acpSessionId ?? "—"}</code>}
               />
             </>
           ) : (
@@ -74,7 +77,7 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
 
         <Section title="Tools">
           {tools.data && tools.data.length > 0 ? (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {tools.data.map((g) => (
                 <Row
                   key={g.serverId}
@@ -175,8 +178,8 @@ function callStateLabel(state: string): string {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
-      <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{title}</h3>
+    <section className="space-y-2.5">
+      <h3 className="vc-label">{title}</h3>
       {children}
     </section>
   );
@@ -185,7 +188,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-muted-foreground">{label}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right">{value}</span>
     </div>
   );

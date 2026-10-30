@@ -75,7 +75,7 @@ async function highlight(code: string, lang: string): Promise<string | null> {
   }
 }
 
-/** A fenced code block: copy button, lazily-loaded syntax highlighting. */
+/** A fenced code block: a header with the language and a copy button, lazily highlighted. */
 export function CodeBlock({ code, lang }: { code: string; lang: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -92,34 +92,38 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }) {
   }, [code, lang]);
 
   return (
-    <div className="group relative">
-      <button
-        type="button"
-        aria-label="Copy code"
-        className={cn(
-          "absolute top-1.5 right-1.5 rounded-md border bg-background/80 p-1 text-muted-foreground",
-          "opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
-        )}
-        onClick={() => {
-          void navigator.clipboard.writeText(code);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        }}
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      </button>
-      {html !== null ? (
-        <pre>
-          {/* highlight.js escapes the source text itself and only adds its own <span> tags, so
+    <div className="overflow-hidden rounded-xl border border-line bg-panel">
+      <div className="flex h-8 items-center justify-between border-line border-b px-3.5 font-mono text-2xs text-muted-foreground">
+        <span>{lang || "text"}</span>
+        <button
+          type="button"
+          aria-label="Copy code"
+          className={cn(
+            "-mr-1.5 flex h-6 items-center gap-1 rounded-md px-1.5 font-sans text-2xs transition-colors hover:bg-muted hover:text-foreground",
+            copied && "text-presence-working hover:text-presence-working",
+          )}
+          onClick={() => {
+            void navigator.clipboard.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          }}
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="vc-scroll max-w-full overflow-x-auto rounded-none border-0 bg-transparent px-3.5 py-3 font-mono text-[11.5px] leading-[1.55] sm:text-[12.5px]">
+        {html !== null ? (
+          <>
+            {/* highlight.js escapes the source text itself and only adds its own <span> tags, so
               this never interprets anything from the code as markup. */}
-          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: highlight.js output is pre-escaped */}
-          <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
-        </pre>
-      ) : (
-        <pre>
+            {/* biome-ignore lint/security/noDangerouslySetInnerHtml: highlight.js output is pre-escaped */}
+            <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />
+          </>
+        ) : (
           <code>{code}</code>
-        </pre>
-      )}
+        )}
+      </pre>
     </div>
   );
 }

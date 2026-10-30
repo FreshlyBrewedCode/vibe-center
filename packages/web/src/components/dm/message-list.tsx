@@ -2,7 +2,8 @@ import type { AgentView, Message } from "@vibe-center/shared";
 import { Loader2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLoadOlderMessages } from "@/lib/queries";
-import { MessageItem } from "./message-item";
+import { AgentAvatar } from "../agent-avatar";
+import { type Fold, MessageItem } from "./message-item";
 
 /**
  * Groups runs by sender identity, not just role: a plain user message, a relayed agent-to-agent
@@ -42,7 +43,8 @@ function dateLabel(ts: number): string {
 /**
  * The DM transcript. Sticks to the bottom while new content streams in (unless scrolled up),
  * loads older pages as you scroll to the top, and can jump to and briefly highlight one message
- * (⌘K search results land here via `jumpToSeq`).
+ * (⌘K search results land here via `jumpToSeq`). Consecutive tool calls fold into one activity
+ * card (`Fold`), so a run of edits reads as one event; every call stays its own message.
  */
 export function MessageList({
   conversationId,
@@ -114,11 +116,13 @@ export function MessageList({
 
   useJumpTo(ref, messages, jumpToSeq, onJumpHandled);
 
+  const rows = layout(messages);
+
   return (
     <div
       ref={ref}
       data-testid="message-list"
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4"
+      className="vc-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4 text-[16px] sm:text-base"
     >
       <div ref={topSentinel} />
       {hasMore && (
@@ -127,35 +131,65 @@ export function MessageList({
         </div>
       )}
       {messages.length === 0 && (
-        <p className="p-6 text-center text-muted-foreground text-sm">
-          This is the start of your DM with {agent.name}.
-        </p>
+        <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-6 pt-16 text-center">
+          <AgentAvatar avatar={agent.avatar} size={56} />
+          <p className="font-semibold text-base">This is the start of your DM with {agent.name}.</p>
+          {agent.description && <p className="text-muted-foreground text-sm">{agent.description}</p>}
+        </div>
       )}
-      {messages.map((m, i) => {
-        const prev = messages[i - 1];
-        const showDate = !prev || !sameDay(prev.createdAt, m.createdAt);
-        // A sender header starts each run from the same sender (session dividers always start a
-        // fresh run, and session itself never gets one).
-        const showHeader =
-          m.kind !== "session" &&
-          (!prev ||
-            prev.kind === "session" ||
-            senderKey(prev) !== senderKey(m) ||
-            m.createdAt - prev.createdAt >= 5 * 60_000 ||
-            showDate);
-        return (
-          <div key={m.id} data-seq={m.seq}>
-            {showDate && (
-              <div className="flex items-center gap-3 px-4 py-3 text-muted-foreground text-xs">
-                <div className="h-px flex-1 bg-border" />
-                <span>{dateLabel(m.createdAt)}</span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-            )}
-            <MessageItem message={m} agent={agent} showHeader={showHeader} />
-          </div>
-        );
-      })}
+      {rows.map(({ message: m, showHeader, showDate, fold }) => (
+        <div key={m.id} data-seq={m.seq}>
+          {showDate && <Divider label={dateLabel(m.createdAt)} />}
+          <MessageItem message={m} agent={agent} showHeader={showHeader} fold={fold} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface Row {
+  message: Message;
+  showHeader: boolean;
+  showDate: boolean;
+  fold: Fold;
+}
+
+/** Headers per sender run, date dividers, and the fold position of each tool call in its run. */
+function layout(messages: Message[]): Row[] {
+  const rows: Row[] = messages.map((m, i) => {
+    const prev = messages[i - 1];
+    const showDate = !prev || !sameDay(prev.createdAt, m.createdAt);
+    // A sender header starts each run from the same sender (session dividers always start a
+    // fresh run, and session itself never gets one).
+    const showHeader =
+      m.kind !== "session" &&
+      (!prev ||
+        prev.kind === "session" ||
+        senderKey(prev) !== senderKey(m) ||
+        m.createdAt - prev.createdAt >= 5 * 60_000 ||
+        showDate);
+    return { message: m, showHeader, showDate, fold: "single" };
+  });
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.message.kind !== "tool_call") continue;
+    const prevFolds = i > 0 && rows[i - 1]!.message.kind === "tool_call" && !row.showHeader;
+    const next = rows[i + 1];
+    const nextFolds = !!next && next.message.kind === "tool_call" && !next.showHeader && !next.showDate;
+    row.fold = prevFolds ? (nextFolds ? "middle" : "last") : nextFolds ? "first" : "single";
+  }
+  return rows;
+}
+
+/** A hairline divider with a centred label (dates; sessions use the same shape). */
+export function Divider({ label, title, testId }: { label: string; title?: string; testId?: string }) {
+  return (
+    <div data-testid={testId} className="flex items-center gap-3 px-4 py-3 text-muted-foreground text-xs sm:px-10">
+      <div className="h-px flex-1 bg-line" />
+      <span title={title} className="shrink-0">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-line" />
     </div>
   );
 }
