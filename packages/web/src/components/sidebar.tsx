@@ -21,11 +21,26 @@ export function sortAgents(agents: AgentView[]): AgentView[] {
   return [...agents].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
-const BOTTOM: { to: "/memories" | "/settings/mcp" | "/settings"; icon: typeof Brain; label: string }[] = [
-  { to: "/memories", icon: Brain, label: "Memories" },
-  { to: "/settings/mcp", icon: Plug, label: "MCP servers" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+/** Bottom links. `active` decides itself: "Settings" must not light up for the MCP servers page. */
+const BOTTOM: {
+  to: "/memories" | "/settings/mcp" | "/settings";
+  icon: typeof Brain;
+  label: string;
+  active: (pathname: string) => boolean;
+}[] = [
+  { to: "/memories", icon: Brain, label: "Memories", active: (p) => p.startsWith("/memories") },
+  { to: "/settings/mcp", icon: Plug, label: "MCP servers", active: (p) => p === "/settings/mcp" },
+  {
+    to: "/settings",
+    icon: Settings,
+    label: "Settings",
+    active: (p) => p.startsWith("/settings") && p !== "/settings/mcp",
+  },
 ];
+
+function usePathname(): string {
+  return useRouterState({ select: (s) => s.location.pathname });
+}
 
 /** The wordmark tile. */
 export function Mark({ className }: { className?: string }) {
@@ -70,6 +85,7 @@ function Rail() {
   const agents = useAgents();
   const sorted = agents.data ? sortAgents(agents.data) : [];
   const activeAgentId = useActiveAgentId();
+  const pathname = usePathname();
   return (
     <>
       <div className="flex h-14 items-center justify-center">
@@ -145,7 +161,7 @@ function Rail() {
         </li>
         {BOTTOM.map((b) => (
           <li key={b.to}>
-            <RailIcon label={b.label} to={b.to}>
+            <RailIcon label={b.label} to={b.to} active={b.active(pathname)}>
               <b.icon className="size-[18px]" />
             </RailIcon>
           </li>
@@ -179,24 +195,26 @@ function RailIcon({
   to,
   onClick,
   dashed,
+  active = false,
   children,
 }: {
   label: string;
   to?: "/agents/new" | "/memories" | "/settings/mcp" | "/settings";
   onClick?: () => void;
   dashed?: boolean;
+  active?: boolean;
   children: ReactNode;
 }) {
   const className = cn(
     "flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:outline-none",
     dashed && "rounded-full border border-line-strong border-dashed hover:border-solid",
+    active && "bg-muted text-foreground",
   );
-  const activeProps = { className: cn(className, "bg-muted text-foreground") };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         {to ? (
-          <Link to={to} aria-label={label} className={className} activeProps={activeProps}>
+          <Link to={to} aria-label={label} aria-current={active ? "page" : undefined} className={className}>
             {children}
           </Link>
         ) : (
@@ -214,6 +232,7 @@ function Expanded() {
   const agents = useAgents();
   const sorted = agents.data ? sortAgents(agents.data) : [];
   const activeAgentId = useActiveAgentId();
+  const pathname = usePathname();
   return (
     <>
       <div className="flex h-14 items-center gap-2.5 px-4">
@@ -319,8 +338,11 @@ function Expanded() {
           <li key={b.to}>
             <Link
               to={b.to}
-              className="flex h-9 items-center gap-3 rounded-lg px-2.5 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-              activeProps={{ className: "bg-muted text-foreground hover:bg-muted" }}
+              aria-current={b.active(pathname) ? "page" : undefined}
+              className={cn(
+                "flex h-9 items-center gap-3 rounded-lg px-2.5 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground",
+                b.active(pathname) && "bg-muted text-foreground hover:bg-muted",
+              )}
             >
               <b.icon className="size-4" /> {b.label}
             </Link>
