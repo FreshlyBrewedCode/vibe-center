@@ -68,8 +68,14 @@ e2e/                      Playwright
   400 days. The DB stores only its SHA-256. Every `/api` route except the exchange and the `/ws`
   upgrade require it. State-changing requests and the WS upgrade also need a same-origin
   `Origin` (`http/origin.ts`, which understands `tailscale serve` and the Vite proxy).
-- Devices can be listed and revoked (`/api/devices`). Revoking one publishes `device.revoked`
-  and closes that device's sockets (close code 4401).
+- Devices can be listed, renamed and revoked (`/api/devices`). Revoking one publishes
+  `device.revoked` and closes that device's sockets (close code 4401).
+- A signed-in device can mint its own link from Settings → Devices → Add device
+  (`POST /api/devices/links`, `DELETE /api/devices/links/:id` to cancel): same auth, same-origin
+  and single-use/10-minute rules as the CLI's, plus a per-device rate limit (`UI_LINK_RATE_LIMIT`
+  per minute) and an optional pre-assigned name. Redeeming one publishes `device.link.paired`
+  (picked up live by the minting device's open dialog) and `device.upsert` (the devices list).
+  The link uses the tailnet HTTPS URL (`publicUrl`) if published, else the request's own origin.
 - The server only binds loopback. Remote devices come in only through `tailscale serve`
   (`--https-port`, default 7443, because 443 and 8443 are taken on dev). `--local` skips it.
   Chromium accepts Secure cookies on `http://localhost`, which the tests rely on.
@@ -318,6 +324,8 @@ and can lose the connection without a `close` event: the socket looks open but i
 | `agent.upsert` / `agent.deleted` / `agent.presence` | sidebar state |
 | `conversation.unread` | unread count + read marker, after new agent messages or a read |
 | `session.started`, `harness.upsert`, `device.revoked` | as named |
+| `device.upsert` | a device was paired or renamed |
+| `device.link.paired` | a link minted from Settings → Devices → Add device was redeemed |
 | `mcp.server.upsert` / `mcp.server.deleted` | MCP server config, status or discovered tools changed |
 | `agent.tools.changed` | an agent's tool groups changed (`agentId: null` = all agents) |
 | `memory.upsert` / `memory.deleted` | a memory changed (by an agent's tool or the UI) |

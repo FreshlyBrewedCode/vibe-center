@@ -155,6 +155,19 @@ async function shoot(browser: import("@playwright/test").Browser): Promise<void>
   await page.screenshot({ path: join(OUT, "settings-harness-secret-light.png") });
   await page.keyboard.press("Escape");
 
+  // Settings → Devices → Add device: the QR code and link, desktop and phone width.
+  await page.getByRole("link", { name: "Devices" }).click();
+  await page.getByRole("button", { name: "Add device" }).click();
+  await page.getByLabel("Device name").fill("Phone");
+  await page.getByRole("button", { name: "Generate new" }).click();
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: join(OUT, "settings-devices-add-device-light.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, "settings-devices-add-device-mobile-light.png") });
+  await page.setViewportSize({ width: 1360, height: 860 });
+  await page.keyboard.press("Escape");
+
   // Dark theme.
   await page.getByRole("link", { name: "Appearance" }).click();
   await page.getByRole("combobox", { name: "Theme" }).click();

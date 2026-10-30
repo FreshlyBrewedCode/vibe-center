@@ -104,8 +104,9 @@ remote.
 - clear failure states: harness not installed, auth missing, voice services offline, MCP server
   failing. Each points to the setting that fixes it
 - browser notification when an agent finishes or needs approval while its DM is not in view
-- settings: General (server, tailnet/https, data dir), Devices (connected sessions, revoke),
-  Harnesses, MCP servers, Voice (worker location, STT/TTS URLs, cues), Appearance
+- settings: General (server, tailnet/https, data dir), Devices (connected sessions, revoke,
+  "Add device" with a QR code/link to pair another one, rename), Harnesses, MCP servers, Voice
+  (worker location, STT/TTS URLs, cues), Appearance
 
 ## Out of scope for v1
 
