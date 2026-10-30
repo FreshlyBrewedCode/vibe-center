@@ -1,4 +1,4 @@
-import type { Harness, HarnessBody, SecretInput, SecretMap } from "@vibe-center/shared";
+import type { Harness, HarnessBody } from "@vibe-center/shared";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSaveHarness } from "@/lib/queries";
+import { rowsOf, type SecretRow, SecretRows, secretRowsToInput } from "./mcp/secret-rows";
 
 function parseArgs(text: string): string[] {
   return text
@@ -24,28 +25,8 @@ function parseArgs(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Stored values never come back from the API: an empty `KEY=` keeps the stored one. */
-function parseEnv(text: string, stored: SecretMap): SecretInput {
-  const env: SecretInput = {};
-  for (const line of text.split("\n").map((l) => l.trim())) {
-    if (!line) continue;
-    const i = line.indexOf("=");
-    if (i < 0) continue;
-    const key = line.slice(0, i).trim();
-    const value = line.slice(i + 1).trim();
-    env[key] = value === "" && key in stored ? { keep: true } : value;
-  }
-  return env;
-}
-
 function toLines(args: string[]): string {
   return args.join("\n");
-}
-
-function envToLines(env: SecretMap): string {
-  return Object.keys(env)
-    .map((k) => `${k}=`)
-    .join("\n");
 }
 
 /**
@@ -58,23 +39,18 @@ export function HarnessFormDialog({ harness, trigger }: { harness?: Harness; tri
   const [name, setName] = useState(harness?.name ?? "");
   const [command, setCommand] = useState(harness?.command ?? "");
   const [args, setArgs] = useState(toLines(harness?.args ?? []));
-  const [env, setEnv] = useState(envToLines(harness?.env ?? {}));
+  const [env, setEnv] = useState<SecretRow[]>(rowsOf(harness?.env));
 
   const reset = () => {
     setName(harness?.name ?? "");
     setCommand(harness?.command ?? "");
     setArgs(toLines(harness?.args ?? []));
-    setEnv(envToLines(harness?.env ?? {}));
+    setEnv(rowsOf(harness?.env));
   };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const body: HarnessBody = {
-      name,
-      command,
-      args: parseArgs(args),
-      env: parseEnv(env, harness?.env ?? {}),
-    };
+    const body: HarnessBody = { name, command, args: parseArgs(args), env: secretRowsToInput(env) };
     save.mutate(body, {
       onSuccess: () => setOpen(false),
       onError: (err) => toast.error(err.message),
@@ -123,12 +99,7 @@ export function HarnessFormDialog({ harness, trigger }: { harness?: Harness; tri
               </Label>
               <Textarea id="harness-args" rows={3} value={args} onChange={(e) => setArgs(e.target.value)} />
             </div>
-            <div>
-              <Label className="mb-1.5 block" htmlFor="harness-env">
-                Environment (KEY=value, one per line; saved values stay hidden, leave them empty to keep them)
-              </Label>
-              <Textarea id="harness-env" rows={3} value={env} onChange={(e) => setEnv(e.target.value)} />
-            </div>
+            <SecretRows label="Environment" rows={env} onChange={setEnv} keyPlaceholder="API_KEY" />
           </div>
           <DialogFooter>
             <DialogClose asChild>
