@@ -1,16 +1,23 @@
 import { Link } from "@tanstack/react-router";
 import type { AgentView } from "@vibe-center/shared";
-import { Copy, Pencil, SquarePen, X } from "lucide-react";
+import { Copy, Loader2, Pencil, Play, SquarePen, X } from "lucide-react";
 import { toast } from "sonner";
-import { useConversation, useHarnesses, useNewSession, useSaveAgent } from "@/lib/queries";
+import {
+  useAgentTools,
+  useCalls,
+  useConversation,
+  useHarnesses,
+  useNewSession,
+  useSaveAgent,
+} from "@/lib/queries";
 import { AgentAvatar, presenceLabel } from "./agent-avatar";
 import { HealthBadge } from "./health-badge";
 import { Button } from "./ui/button";
+import { usePreviewVoice, voiceName } from "./voice/voice-picker";
 
 /**
- * The on-demand details panel for a DM: agent info, current session, model/harness, quick
- * actions. 2b adds its own section below (a "Voice" section for the call voice picker) — append
- * a `<Section>`, keyed by agent.id so it resets when the agent changes.
+ * The on-demand details panel for a DM: agent info, current session, model/harness, tools,
+ * voice, quick actions.
  */
 export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: () => void }) {
   const conversation = useConversation(agent.conversationId);
@@ -18,6 +25,10 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
   const harness = harnesses.data?.find((h) => h.id === agent.harnessId);
   const newSession = useNewSession(agent.conversationId);
   const duplicate = useSaveAgent();
+  const tools = useAgentTools(agent.id);
+  const calls = useCalls();
+  const call = calls.data?.find((c) => c.agentId === agent.id && c.state !== "ended");
+  const { preview, playing } = usePreviewVoice();
   const session = conversation.data?.sessions.find(
     (s) => s.id === conversation.data.conversation.activeSessionId,
   );
@@ -61,7 +72,45 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
           )}
         </Section>
 
-        {/* SEAM (2b): a "Voice" Section with the call voice picker goes here. */}
+        <Section title="Tools">
+          {tools.data && tools.data.length > 0 ? (
+            <div className="space-y-1">
+              {tools.data.map((g) => (
+                <Row
+                  key={g.serverId}
+                  label={g.builtin ? "Built-in" : g.serverName}
+                  value={
+                    g.serverEnabled
+                      ? `${g.tools.filter((t) => t.enabled).length} of ${g.tools.length} on`
+                      : "server disabled"
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-xs">No tools configured.</p>
+          )}
+          <Button asChild variant="outline" size="sm" className="justify-start">
+            <Link to="/agents/$agentId/edit" params={{ agentId: agent.id }}>
+              Edit tools
+            </Link>
+          </Button>
+        </Section>
+
+        <Section title="Voice">
+          <Row label="Voice" value={agent.voice ? voiceName(agent.voice) : "Default"} />
+          {call && <Row label="Call" value={callStateLabel(call.state)} />}
+          <Button
+            variant="outline"
+            size="sm"
+            className="justify-start"
+            disabled={playing}
+            onClick={() => preview(agent.voice)}
+          >
+            {playing ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+            Preview voice
+          </Button>
+        </Section>
 
         <Section title="Quick actions">
           <div className="flex flex-col gap-2">
@@ -111,6 +160,17 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
       </div>
     </aside>
   );
+}
+
+const CALL_STATE_LABELS: Record<string, string> = {
+  connecting: "Connecting…",
+  listening: "In call · listening",
+  thinking: "In call · thinking",
+  speaking: "In call · speaking",
+};
+
+function callStateLabel(state: string): string {
+  return CALL_STATE_LABELS[state] ?? state;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

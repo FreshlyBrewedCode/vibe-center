@@ -24,29 +24,19 @@ const GROUPS: [prefix: string, label: string][] = [
 ];
 
 /** `af_heart` → `Heart` */
-const voiceName = (v: string) => v.replace(/^[a-z]{2}_/, "").replace(/^./, (c) => c.toUpperCase());
+export const voiceName = (v: string) => v.replace(/^[a-z]{2}_/, "").replace(/^./, (c) => c.toUpperCase());
 
-/** The agent's TTS voice for calls, from the TTS server's list, with a preview button. */
-export function VoicePicker({
-  value,
-  onChange,
-}: {
-  value: string | null;
-  onChange: (v: string | null) => void;
-}) {
-  const status = useVoiceStatus();
-  const online = status.data?.worker.state === "ok";
-  const voices = useVoices(online);
+/** Plays a short sample of a voice (null = the worker's default). Shared by the picker and details panel. */
+export function usePreviewVoice(): { preview: (voice: string | null) => Promise<void>; playing: boolean } {
   const [playing, setPlaying] = useState(false);
-
-  const preview = async () => {
+  const preview = async (voice: string | null) => {
     setPlaying(true);
     try {
       const res = await fetch(voicePaths.preview, {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ voice: value }),
+        body: JSON.stringify({ voice }),
       });
       if (!res.ok)
         throw new Error(
@@ -62,6 +52,21 @@ export function VoicePicker({
       setPlaying(false);
     }
   };
+  return { preview, playing };
+}
+
+/** The agent's TTS voice for calls, from the TTS server's list, with a preview button. */
+export function VoicePicker({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  const status = useVoiceStatus();
+  const online = status.data?.worker.state === "ok";
+  const voices = useVoices(online);
+  const { preview, playing } = usePreviewVoice();
 
   if (!voices.data) {
     return (
@@ -117,7 +122,7 @@ export function VoicePicker({
         variant="outline"
         size="icon"
         aria-label="Preview voice"
-        onClick={preview}
+        onClick={() => preview(value)}
         disabled={playing}
       >
         {playing ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
