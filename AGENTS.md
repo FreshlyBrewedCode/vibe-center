@@ -21,6 +21,8 @@ bun run check:voice    # voice worker: ruff + pytest (services/voice/run.sh chec
 
 - Sign in by opening the printed link (single use, 10 min). On NixOS, Playwright needs a nix
   chromium: `nix build nixpkgs#chromium -o .chromium` (the config picks it up).
+- `start` rebuilds the web app when its sources are newer than the last build (`--no-build` skips
+  the check); `--dev` always uses Vite and never needs this.
 - Data lives in `~/.vibe-center/` (`--data-dir` / `VIBE_CENTER_DATA_DIR`). Tests use temp dirs.
   Never point a test at the real one.
 - `start` also starts the voice worker (`services/voice`, Python; first run syncs its venv);

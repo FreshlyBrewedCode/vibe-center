@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import qrcodeTerminal from "qrcode-terminal";
 import { LINK_TOKEN_TTL_MS } from "./auth/auth.ts";
+import { isBuildStale, type WebBuildSources, writeStamp } from "./build-stamp.ts";
 import { DEFAULT_HTTPS_PORT, DEFAULT_PORT, dataPaths, ensureDataDir, resolveDataDir } from "./config.ts";
 import { type LinkResponse, requestLink, startControlServer } from "./control.ts";
 import { WEB_DIST } from "./http/static.ts";
@@ -25,9 +26,24 @@ Options:
   --dev                Serve the web app from Vite with HMR (start)
   --no-probe           Don't probe harnesses on start (start)
   --no-voice           Don't start the managed voice worker (start; calls need it)
+  --no-build           Don't check for or rebuild a stale web build (start)
 `;
 
 const WEB_DIR = join(import.meta.dir, "../../web");
+const SHARED_DIR = join(import.meta.dir, "../../shared");
+const ROOT_DIR = join(import.meta.dir, "../../..");
+
+/** What feeds the web build, so a stale `dist` can be detected and rebuilt before serving. */
+const WEB_BUILD_SOURCES: WebBuildSources = {
+  webSrc: join(WEB_DIR, "src"),
+  webIndexHtml: join(WEB_DIR, "index.html"),
+  webViteConfig: join(WEB_DIR, "vite.config.ts"),
+  webPackageJson: join(WEB_DIR, "package.json"),
+  sharedSrc: join(SHARED_DIR, "src"),
+  sharedPackageJson: join(SHARED_DIR, "package.json"),
+  rootPackageJson: join(ROOT_DIR, "package.json"),
+  lockfile: join(ROOT_DIR, "bun.lock"),
+};
 
 async function main(): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -41,6 +57,7 @@ async function main(): Promise<number> {
       dev: { type: "boolean", default: false },
       "no-probe": { type: "boolean", default: false },
       "no-voice": { type: "boolean", default: false },
+      "no-build": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -82,14 +99,19 @@ async function main(): Promise<number> {
   cleanups.push(() => control.stop());
 
   try {
-    if (!values.dev && !existsSync(join(WEB_DIST, "index.html"))) {
-      console.log("Building the web app (first start)…");
+    if (!values.dev && !values["no-build"] && isBuildStale(WEB_DIST, WEB_BUILD_SOURCES)) {
+      console.log(
+        existsSync(join(WEB_DIST, "index.html"))
+          ? "web app changed since last build, rebuilding…"
+          : "Building the web app (first start)…",
+      );
       const build = Bun.spawnSync(["bun", "run", "build"], {
         cwd: WEB_DIR,
         stdout: "inherit",
         stderr: "inherit",
       });
       if (build.exitCode !== 0) throw new Error("web build failed");
+      writeStamp(WEB_DIST, WEB_BUILD_SOURCES);
     }
 
     const app = createServer({
