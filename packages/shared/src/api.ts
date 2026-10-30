@@ -55,7 +55,8 @@ const agentFields = {
   cwd: z
     .string()
     .min(1)
-    .refine((p) => p.startsWith("/") || p.startsWith("~"), "must be an absolute path"),
+    // `~user/…` isn't expanded, so only `/…`, `~` and `~/…`
+    .refine((p) => p.startsWith("/") || p === "~" || p.startsWith("~/"), "must be an absolute path (or ~/…)"),
   voice: z.string().nullable(),
 };
 

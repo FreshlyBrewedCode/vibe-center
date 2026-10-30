@@ -4,7 +4,7 @@ The Pipecat call pipeline behind Vibe Center's voice calls: WebRTC transport, Si
 Smart Turn v3 turn-taking, STT/TTS (GPU servers or CPU fallbacks), fillers, barge-in and the
 latency log. It owns **no agent**: its LLM step goes back into the app over a per-call
 WebSocket, and the app prompts the agent's own ACP session (`ChatService.prompt`, source
-`voice`). Grown out of `prototype/voice-loop` (its results: [RESULTS-prototype.md](RESULTS-prototype.md)).
+`voice`). Grown out of an earlier prototype (its results: [RESULTS-prototype.md](RESULTS-prototype.md)).
 
 ```
 browser ──WebRTC media (UDP, direct)──▶ worker (this dir, Python)        STT/TTS servers
@@ -23,7 +23,8 @@ token, restarted when it crashes, logged to `~/.vibe-center/logs/voice-worker.lo
 a **remote** worker on another machine (then set its URL and token in Settings → Voice):
 
 ```sh
-VC_WORKER_TOKEN=$(openssl rand -hex 24) VC_WORKER_HOST=0.0.0.0 VC_WORKER_PORT=7860 ./run.sh
+(umask 077; openssl rand -hex 24 > ~/.vc-worker-token)   # once; paste it into Settings → Voice
+VC_WORKER_TOKEN=$(cat ~/.vc-worker-token) VC_WORKER_HOST=0.0.0.0 VC_WORKER_PORT=7860 ./run.sh
 ./run.sh check                                   # ruff + pytest
 ./run.sh python -m voice_worker.analyze          # newest call log: per-stage median/p90 + per-turn table
 ./run.sh python -m voice_worker.analyze <log> --browser <browser.json> --md

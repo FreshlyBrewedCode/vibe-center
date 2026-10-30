@@ -9,7 +9,7 @@ export interface TailscaleServe {
 /**
  * Publish the local port on the tailnet over HTTPS (Tailscale's cert; the mic needs a secure
  * context). Runs `tailscale serve` in the foreground, so the serve entry disappears when it
- * stops, as in prototype/voice-loop/run.sh.
+ * stops (docs/ARCHITECTURE.md, Auth).
  */
 export async function tailscaleServe(httpsPort: number, targetPort: number): Promise<TailscaleServe> {
   const status = Bun.spawnSync(["tailscale", "status", "--json"], { stderr: "pipe" });

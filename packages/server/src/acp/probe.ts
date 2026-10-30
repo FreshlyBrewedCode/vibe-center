@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessHealth, HarnessProbe } from "@vibe-center/shared";
@@ -25,7 +25,10 @@ export async function probeHarness(
 ): Promise<ProbeResult> {
   const adapter = adapters[harness.kind];
   const timeoutMs = opts.timeoutMs ?? 45_000;
-  const dir = await mkdtemp(join(tmpdir(), "vibe-center-probe-"));
+  // One fixed scratch dir: harnesses keep per-directory state (Claude Code a transcript dir under
+  // ~/.claude/projects/<cwd>), so a fresh temp dir per probe left a new one behind on every start.
+  const dir = join(tmpdir(), "vibe-center-probe");
+  await mkdir(dir, { recursive: true });
   const now = Date.now();
   const health = (status: HarnessHealth["status"], message: string | null): HarnessHealth => ({
     status,
@@ -120,7 +123,6 @@ export async function probeHarness(
     return { health: health(status, message), probe: null };
   } finally {
     await proc?.close(1000);
-    await rm(dir, { recursive: true, force: true });
   }
 }
 

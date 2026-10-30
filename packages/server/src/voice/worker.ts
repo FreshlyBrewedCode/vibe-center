@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
+import { createWriteStream, mkdirSync, renameSync, statSync, type WriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { type ProcessTracker, stopGroup } from "../procs.ts";
@@ -76,6 +76,8 @@ export interface ManagedWorkerOptions {
 }
 
 const LOG_TAIL = 200;
+/** On (re)opening, a log bigger than this moves to `<log>.1` (replacing the previous one). */
+const LOG_ROTATE_BYTES = 5 * 1024 * 1024;
 /** A worker that stayed up this long resets the crash backoff. */
 const STABLE_MS = 60_000;
 
@@ -125,7 +127,10 @@ export class ManagedWorker {
     this.stopping = false;
     this.port = await freePort();
     mkdirSync(dirname(this.opts.logFile), { recursive: true });
-    this.log ??= createWriteStream(this.opts.logFile, { flags: "a", mode: 0o600 });
+    if (!this.log) {
+      rotate(this.opts.logFile);
+      this.log = createWriteStream(this.opts.logFile, { flags: "a", mode: 0o600 });
+    }
     const [cmd, ...args] = this.opts.command;
     if (!cmd) throw new Error("no voice worker command");
     this.line(`--- starting voice worker on 127.0.0.1:${this.port}: ${this.opts.command.join(" ")}`);
@@ -215,6 +220,12 @@ export class ManagedWorker {
     this.tail.push(l);
     if (this.tail.length > LOG_TAIL) this.tail.splice(0, this.tail.length - LOG_TAIL);
   }
+}
+
+function rotate(file: string): void {
+  try {
+    if (statSync(file).size > LOG_ROTATE_BYTES) renameSync(file, `${file}.1`);
+  } catch {} // no log yet
 }
 
 function freePort(): Promise<number> {

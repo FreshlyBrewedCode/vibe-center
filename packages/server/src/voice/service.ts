@@ -371,9 +371,12 @@ export class VoiceService {
           },
         },
       );
+      // a call started from another device meanwhile replaced this one: don't hand out its answer
+      if (!this.calls.has(id)) throw new HttpError(409, "the call was replaced by another one");
       const updated = this.update(id, (c) => ({ ...c, speech: res.speech }));
       return { call: updated ?? call, answer: { sdp: res.sdp, type: "answer", pcId: res.pc_id } };
     } catch (e) {
+      if (e instanceof HttpError) throw e;
       this.endCall(id, "the voice worker could not start the call");
       const msg = e instanceof WorkerError ? e.message : (e as Error).message;
       throw new HttpError(502, `The voice worker could not start the call: ${msg}`, "settings:voice");
