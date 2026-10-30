@@ -74,7 +74,8 @@ async function worker<T = unknown>(path: string, json?: unknown): Promise<T> {
   });
   return (await res.json()) as T;
 }
-type Frame = { type: string; id?: string; text?: string; status?: string; title?: string };
+type Frame = { type: string; id?: string; text?: string; status?: string; title?: string; reason?: string };
+const callNow = async () => (await api<Call[]>("/api/voice/calls"))[0];
 const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
@@ -319,6 +320,29 @@ describe("a call through the bridge", () => {
     });
     expect(c.lastTurn?.ms.first_audio_out).toBe(1234);
     expect((await api<AgentView>(`/api/agents/${agent.id}`)).presenceDetail).toBe("speaking");
+  });
+
+  test("a spoken request stuck behind a turn waiting for approval: the worker hears why at once", async () => {
+    // a text turn in the DM asks for a permission nobody has answered yet
+    const typed = app.services.chat.prompt(agent.id, { text: "permission please", source: "user" });
+    const perm = await until(async () =>
+      (await messages(agent)).find((m) => m.kind === "permission" && m.status === "pending"),
+    );
+    const t0 = Date.now();
+    const { id } = await worker<{ id: string }>("/test/say", { text: "are you there" });
+    const waiting = await until(async () =>
+      (await frames()).find((f) => f.type === "waiting" && f.id === id),
+    );
+    expect(Date.now() - t0).toBeLessThan(1500); // not after the worker's 45 s prompt timeout
+    expect(waiting).toMatchObject({ reason: "permission", title: "Run rm -rf build" });
+    const c = await until(async () => (await callNow())?.waiting && (await callNow()));
+    expect(c?.waiting).toEqual({ reason: "permission", detail: "Run rm -rf build" });
+    // approving in the chat lets the spoken request through
+    await api(`/api/messages/${perm.id}/permission`, { method: "POST", json: { optionId: "allow" } });
+    expect((await typed.done).status).toBe("complete");
+    const done = await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));
+    expect(done.status).toBe("complete");
+    await until(async () => (await callNow())?.waiting === null);
   });
 
   test("hang up ends the call, tells the worker and clears presence", async () => {

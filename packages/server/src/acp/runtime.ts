@@ -246,6 +246,19 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * What a turn is waiting for, if anything: a permission request (its own, or the running
+   * turn's when it is queued behind it), or other turns ahead of it (`blockedBy`, the turn
+   * running or next). Null for a turn that is running freely, or unknown.
+   */
+  waitState(turnId: string): { permission: string | null; blockedBy: string | null } | null {
+    const cur = this.current;
+    const permission = cur ? ([...cur.permissions.values()][0]?.title ?? null) : null;
+    if (cur?.turnId === turnId) return permission ? { permission, blockedBy: null } : null;
+    if (!this.queue.some((q) => q.input.turnId === turnId)) return null;
+    return { permission, blockedBy: cur?.turnId ?? this.queue[0]?.input.turnId ?? null };
+  }
+
   /** Answer a pending permission request of the running turn. */
   respondPermission(requestId: string, optionId: string): boolean {
     const p = this.current?.permissions.get(requestId);

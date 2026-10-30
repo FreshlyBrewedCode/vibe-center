@@ -17,6 +17,9 @@ App → worker frames:
     {"type": "text", "id", "text"}            reply text chunk
     {"type": "tool", "id", "toolCallId", "title", "status": "start"|"end"}
     {"type": "permission", "id", "title"}     the agent waits for approval in the app
+    {"type": "waiting", "id", "reason": "permission"|"busy", "title"}
+                                              the prompt is queued behind other work: a turn
+                                              waiting for approval in the chat, or a busy agent
     {"type": "done", "id", "status": "complete"|"cancelled"|"error", "error"?}
     {"type": "event", "text"}                 proactive event: speak it when the line is quiet
     {"type": "end", "reason"?}                hang up
@@ -40,7 +43,7 @@ from .latency import now_ms
 
 @dataclass
 class AgentEvent:
-    kind: str  # started | usage | text | tool_start | tool_end | permission | done | error
+    kind: str  # started | usage | text | tool_start | tool_end | permission | waiting | done | error
     t: float = field(default_factory=now_ms)
     text: str = ""
     tool_id: str = ""
@@ -202,6 +205,9 @@ class Bridge:
             stream._push(AgentEvent(kind))
         elif kind == "permission":
             stream._push(AgentEvent("permission", title=str(m.get("title", ""))))
+        elif kind == "waiting":
+            reason = "permission" if m.get("reason") == "permission" else "busy"
+            stream._push(AgentEvent("waiting", status=reason, title=str(m.get("title") or "")))
         elif kind == "done":
             status = str(m.get("status", "complete"))
             if status == "error":

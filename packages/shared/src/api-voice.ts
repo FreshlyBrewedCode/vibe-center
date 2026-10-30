@@ -124,6 +124,17 @@ export interface CallTurnLatency {
   tools: number;
 }
 
+/**
+ * Why the call's current request isn't being answered: the agent waits for an approval in the
+ * chat (`permission`, its own turn's or the one running ahead of it), or it is still busy with
+ * other work queued ahead (`busy`, e.g. a text message's turn).
+ */
+export interface CallWaiting {
+  reason: "permission" | "busy";
+  /** The permission request's title, if any. */
+  detail: string | null;
+}
+
 export interface Call {
   id: Id;
   agentId: Id;
@@ -137,6 +148,8 @@ export interface Call {
   /** What the worker uses for this call: a server URL, or "cpu". */
   speech: { stt: string; tts: string } | null;
   lastTurn: CallTurnLatency | null;
+  /** Set while a spoken request waits on something else; null when it runs (or nothing's asked). */
+  waiting: CallWaiting | null;
 }
 
 const sdpType = z.enum(["offer", "answer", "pranswer", "rollback"]);

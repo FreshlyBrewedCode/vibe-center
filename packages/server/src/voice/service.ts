@@ -333,10 +333,12 @@ export class VoiceService {
       endReason: null,
       speech: null,
       lastTurn: null,
+      waiting: null,
     };
     const bridge = new CallBridge(id, agent.id, agent.name, this.deps.chat, this.deps.bus, {
       onState: (state) => this.setState(id, state),
       onLatency: (turn) => this.update(id, (c) => ({ ...c, lastTurn: turn })),
+      onWaiting: (waiting) => this.update(id, (c) => ({ ...c, waiting })),
       onClose: (reason) => this.endCall(id, reason),
     });
     const connectTimer = setTimeout(() => {

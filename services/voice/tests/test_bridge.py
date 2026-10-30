@@ -47,6 +47,13 @@ class FakeApp:
             await self.hold.wait()
             await ws.send_json({"type": "done", "id": pid, "status": "cancelled"})
             return
+        if "blocked" in m["text"]:
+            await ws.send_json(
+                {"type": "waiting", "id": pid, "reason": "permission", "title": "rm -rf build"}
+            )
+            await ws.send_json({"type": "waiting", "id": pid, "reason": "busy", "title": None})
+            await ws.send_json({"type": "done", "id": pid, "status": "complete"})
+            return
         if "fail" in m["text"]:
             await ws.send_json({"type": "done", "id": pid, "status": "error", "error": "harness crashed"})
             return
@@ -117,6 +124,15 @@ async def test_mark_interrupted(app_url):
     bridge.mark_interrupted(pid)
     await asyncio.sleep(0.05)
     assert {"type": "interrupted", "id": pid} in fake.received
+    await bridge.close()
+
+
+async def test_waiting_frames(app_url):
+    _, url = app_url
+    bridge = await Bridge.connect(url, TOKEN)
+    events = await collect(bridge.prompt("a blocked one"))
+    waiting = [(e.status, e.title) for e in events if e.kind == "waiting"]
+    assert waiting == [("permission", "rm -rf build"), ("busy", "")]
     await bridge.close()
 
 

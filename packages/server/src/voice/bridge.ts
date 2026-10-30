@@ -1,4 +1,4 @@
-import type { CallState, CallTurnLatency, ServerEvent } from "@vibe-center/shared";
+import type { CallState, CallTurnLatency, CallWaiting, ServerEvent } from "@vibe-center/shared";
 import type { ServerWebSocket } from "bun";
 import type * as acp from "../acp/protocol.ts";
 import type { ChatService, PromptHandle } from "../domain/chat.ts";
@@ -12,6 +12,10 @@ import type { EventBus } from "../events/bus.ts";
  * idle timeout), and the reply streams back as `text`/`tool` frames. `cancel` (barge-in while the
  * turn is still running) cancels only that turn; `interrupted` (barge-in while a finished reply is
  * still being spoken) marks its reply message instead, since there is nothing left to cancel.
+ *
+ * A prompt shares the agent's queue with text, agent and event turns. When it is stuck behind
+ * one (waiting for an approval in the chat, or just busy), the worker gets a `waiting` frame so
+ * it can say so instead of going quiet until its timeout, and the call shows it (`call.waiting`).
  */
 export interface BridgeSocketData {
   bridgeCallId: string;
@@ -31,12 +35,16 @@ export type AppFrame =
   | { type: "text"; id: string; text: string }
   | { type: "tool"; id: string; toolCallId: string; title: string; status: "start" | "end" }
   | { type: "permission"; id: string; title: string }
+  /** The prompt is queued behind other work: a turn waiting for approval, or just a busy agent. */
+  | { type: "waiting"; id: string; reason: CallWaiting["reason"]; title: string | null }
   | { type: "done"; id: string; status: "complete" | "cancelled" | "error"; error?: string | null }
   | { type: "event"; text: string }
   | { type: "end"; reason: string };
 
 /** No ACP update for this long ends a voice turn with an error (the worker apologises). */
 export const VOICE_IDLE_MS = 20_000;
+/** A prompt queued behind a busy (not blocked) agent this long gets a `waiting` frame. */
+export const BUSY_NOTICE_MS = 2500;
 
 /** Sent before every call prompt (hidden; not stored). The fake test agent strips this block. */
 export function voiceNote(kind: "user" | "event", context?: string): string {
@@ -64,6 +72,7 @@ export interface SpokenEvent {
 export interface CallBridgeHandlers {
   onState(state: CallState): void;
   onLatency(turn: CallTurnLatency): void;
+  onWaiting(waiting: CallWaiting | null): void;
   onClose(reason: string): void;
 }
 
@@ -71,6 +80,10 @@ interface OpenPrompt {
   turnId: string | null;
   usageSent: boolean;
   cancelled: boolean;
+  queuedAt: number;
+  /** The `waiting` reason the worker was last told, so it hears each one once. */
+  told: CallWaiting["reason"] | null;
+  timer: ReturnType<typeof setTimeout> | null;
 }
 
 export class CallBridge {
@@ -154,6 +167,7 @@ export class CallBridge {
     this.unsubscribe();
     for (const id of this.prompts.keys()) this.cancel(id);
     this.resolvedTurns.clear();
+    for (const open of this.prompts.values()) if (open.timer) clearTimeout(open.timer);
     try {
       this.ws?.close(1000, reason.slice(0, 100));
     } catch {}
@@ -164,7 +178,14 @@ export class CallBridge {
 
   private prompt(f: Extract<WorkerFrame, { type: "prompt" }>): void {
     const kind = f.kind === "event" ? "event" : "user";
-    const open: OpenPrompt = { turnId: null, usageSent: false, cancelled: false };
+    const open: OpenPrompt = {
+      turnId: null,
+      usageSent: false,
+      cancelled: false,
+      queuedAt: Date.now(),
+      told: null,
+      timer: null,
+    };
     this.prompts.set(f.id, open);
     let ev: SpokenEvent = {};
     if (kind === "event") {
@@ -182,6 +203,7 @@ export class CallBridge {
         note: [voiceNote(kind, f.context), ev.note].filter(Boolean).join("\n"),
         idleTimeoutMs: VOICE_IDLE_MS,
         onUpdate: (u) => this.forward(f.id, open, u),
+        onStart: () => this.refreshWaiting(),
       });
     } catch (e) {
       this.prompts.delete(f.id);
@@ -192,17 +214,45 @@ export class CallBridge {
     ev.onPrompt?.(handle);
     this.send({ type: "started", id: f.id, turnId: handle.turnId });
     if (open.cancelled) this.chat.cancelTurn(this.agentId, handle.turnId);
+    this.refreshWaiting();
+    open.timer = setTimeout(() => this.refreshWaiting(), BUSY_NOTICE_MS);
+    const finish = (frame: AppFrame) => {
+      if (open.timer) clearTimeout(open.timer);
+      this.prompts.delete(f.id);
+      this.send(frame);
+      this.refreshWaiting();
+    };
     void handle.done.then(
       (r) => {
-        this.prompts.delete(f.id);
         if (open.turnId) this.resolvedTurns.set(f.id, open.turnId);
-        this.send({ type: "done", id: f.id, status: r.status, error: r.error });
+        finish({ type: "done", id: f.id, status: r.status, error: r.error });
       },
-      (e) => {
-        this.prompts.delete(f.id);
-        this.send({ type: "done", id: f.id, status: "error", error: String(e) });
-      },
+      (e) => finish({ type: "done", id: f.id, status: "error", error: String(e) }),
     );
+  }
+
+  /**
+   * Work out what this call's open prompts wait for, tell the worker about new reasons (an
+   * approval at once, a busy agent after BUSY_NOTICE_MS) and report it on the call. A prompt
+   * waiting for its own turn's approval already got a `permission` frame; one queued behind this
+   * call's own earlier prompt (a barge-in still finishing) isn't stuck on anything else.
+   */
+  private refreshWaiting(): void {
+    if (this.closed) return;
+    const own = new Set([...this.prompts.values()].map((p) => p.turnId));
+    let waiting: CallWaiting | null = null;
+    for (const [id, open] of this.prompts) {
+      if (!open.turnId || open.cancelled) continue;
+      const w = this.chat.waitState(this.agentId, open.turnId);
+      if (!w || (w.blockedBy && own.has(w.blockedBy))) continue;
+      const reason = w.permission ? "permission" : "busy";
+      waiting ??= { reason, detail: w.permission };
+      if (!w.blockedBy || open.told === reason) continue;
+      if (reason === "busy" && Date.now() - open.queuedAt < BUSY_NOTICE_MS) continue;
+      open.told = reason;
+      this.send({ type: "waiting", id, reason, title: w.permission });
+    }
+    this.handlers.onWaiting(waiting);
   }
 
   private cancel(id: string): void {
@@ -251,8 +301,10 @@ export class CallBridge {
   }
 
   private onBusEvent(e: ServerEvent): void {
-    if (e.type !== "message.upsert" || e.message.kind !== "permission" || e.message.status !== "pending")
-      return;
+    if (e.type !== "message.upsert" || e.message.kind !== "permission") return;
+    // any turn of the agent asking or getting an answer can block or unblock ours
+    this.refreshWaiting();
+    if (e.message.status !== "pending") return;
     for (const [id, open] of this.prompts) {
       if (open.turnId && open.turnId === e.message.turnId) {
         this.send({ type: "permission", id, title: e.message.text });

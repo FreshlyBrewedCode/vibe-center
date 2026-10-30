@@ -42,6 +42,8 @@ export interface PromptRequest {
   idleTimeoutMs?: number;
   /** Raw ACP updates of this turn as they arrive. */
   onUpdate?: (update: acp.SessionUpdate) => void;
+  /** The turn left the queue and started running. */
+  onStart?: () => void;
 }
 
 export interface PromptHandle {
@@ -70,6 +72,7 @@ export class ChatService {
   private replies = new Map<string, string>();
   /** Permission message id → where to answer it. */
   private pendingPermissions = new Map<string, { agentId: string; requestId: string }>();
+  private onStart = new Map<string, () => void>();
   /** Agents being deleted: they take no prompts, so nothing can spawn their harness again. */
   private retired = new Set<string>();
 
@@ -122,6 +125,7 @@ export class ChatService {
       (id) => this.publishUnread(id),
     );
     this.turns.set(turnId, recorder);
+    if (req.onStart) this.onStart.set(turnId, req.onStart);
     const { done } = this.runtime(agent).prompt({
       turnId,
       content: [{ type: "text", text: req.text }],
@@ -155,6 +159,11 @@ export class ChatService {
   /** Start the agent's harness and session now, ahead of its first prompt (calls do this). */
   warm(agentId: string): Promise<void> {
     return this.runtime(this.requireAgent(agentId)).warm();
+  }
+
+  /** What a turn waits for: a permission request, or other turns ahead of it (see AgentRuntime). */
+  waitState(agentId: string, turnId: string): { permission: string | null; blockedBy: string | null } | null {
+    return this.runtimes.get(agentId)?.waitState(turnId) ?? null;
   }
 
   /** Cancel one turn (running or queued) of an agent without touching its other turns. */
@@ -296,9 +305,13 @@ export class ChatService {
 
   private onRuntimeEvent(agentId: string, e: RuntimeEvent): void {
     switch (e.type) {
-      case "turn.start":
+      case "turn.start": {
         this.repos.conversations.startTurn(e.turnId);
+        const started = this.onStart.get(e.turnId);
+        this.onStart.delete(e.turnId);
+        started?.();
         return;
+      }
       case "turn.update":
         this.turns.get(e.turnId)?.update(e.update);
         return;
@@ -317,6 +330,7 @@ export class ChatService {
       case "turn.end": {
         const rec = this.turns.get(e.turnId);
         this.turns.delete(e.turnId);
+        this.onStart.delete(e.turnId);
         const text = rec?.end(e.result) ?? "";
         this.repos.conversations.endTurn(e.turnId, e.result.status, e.result.stopReason, e.result.error);
         this.replies.set(e.turnId, text);

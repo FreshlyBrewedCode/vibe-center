@@ -52,6 +52,10 @@ from .speech import TTS_SAMPLE_RATE
 APOLOGY = "Sorry, that's taking too long. Could you say that again?"
 ERROR_APOLOGY = "Sorry, something went wrong on my side. Could you say that again?"
 PERMISSION_NOTE = "I need your approval in the app for that."
+# The prompt is queued behind another turn: one waiting for approval, or just a busy agent.
+WAITING_APPROVAL_NOTE = "I'm waiting for your approval on a command in the chat."
+BUSY_NOTE = "I'm still finishing something from the chat. I'll get to this in a moment."
+APPROVAL_TIMEOUT = "I'm still waiting for that approval in the chat. Ask me again once it's answered."
 INTERRUPTED_CONTEXT = "(I interrupted your previous reply, so I didn't hear all of it.)"
 # A proactive event is spoken only after the line has been quiet this long.
 EVENT_QUIET_MS = 600
@@ -314,6 +318,7 @@ class BridgeTalker(FrameProcessor):
         response_open = False
         spoken = False
         asked_permission = False
+        told: set[str] = set()  # waiting reasons already spoken
         reply = []
         tools: dict[str, dict] = {}
         stream = self._bridge.prompt(text, kind, context)
@@ -363,6 +368,14 @@ class BridgeTalker(FrameProcessor):
                             await self.push_frame(LLMFullResponseEndFrame())
                             response_open = False
                         await self.push_frame(TTSSpeakFrame(PERMISSION_NOTE))
+                    elif ev.kind == "waiting" and ev.status not in told:
+                        told.add(ev.status)
+                        log.info(waiting=ev.status, waiting_for=ev.title)
+                        if response_open:
+                            await self.push_frame(LLMFullResponseEndFrame())
+                            response_open = False
+                        note = WAITING_APPROVAL_NOTE if ev.status == "permission" else BUSY_NOTE
+                        await self.push_frame(TTSSpeakFrame(note))
                     elif ev.kind == "done":
                         log.info(stop_status=ev.status)
                     elif ev.kind == "error":
@@ -380,7 +393,8 @@ class BridgeTalker(FrameProcessor):
                 if response_open:
                     await self.push_frame(LLMFullResponseEndFrame())
                     response_open = False
-                await self.push_frame(TTSSpeakFrame(APOLOGY))
+                blocked = asked_permission or "permission" in told
+                await self.push_frame(TTSSpeakFrame(APPROVAL_TIMEOUT if blocked else APOLOGY))
         except asyncio.CancelledError:
             raise
         except Exception as e:
