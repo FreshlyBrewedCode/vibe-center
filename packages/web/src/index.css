@@ -105,10 +105,21 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* The app is pinned to the visible viewport (lib/viewport.ts: above the iOS keyboard, which
+     doesn't resize the layout viewport) and never scrolls the document: no body scroll or
+     rubber-banding behind the message list. Safe areas (notch, home indicator) are padded here;
+     the bottom one not while the keyboard is up. */
   html,
-  body,
+  body {
+    @apply h-full overflow-hidden overscroll-none;
+  }
   #root {
-    @apply h-full;
+    position: fixed;
+    inset-inline: 0;
+    top: var(--vv-top, 0px);
+    height: var(--vv-height, 100dvh);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      var(--safe-bottom, env(safe-area-inset-bottom)) env(safe-area-inset-left);
   }
   body {
     @apply bg-background text-foreground antialiased;

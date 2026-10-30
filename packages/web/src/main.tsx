@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { setUnauthorizedHandler } from "./lib/api";
 import { keys, queryClient } from "./lib/queries";
+import { pinToVisualViewport } from "./lib/viewport";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
@@ -17,6 +18,8 @@ declare module "@tanstack/react-router" {
 
 // Any 401 means the device session is gone (revoked or expired): show the signed-out screen.
 setUnauthorizedHandler(() => queryClient.setQueryData(keys.me, null));
+
+pinToVisualViewport();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

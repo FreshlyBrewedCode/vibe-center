@@ -47,10 +47,13 @@ function SignedIn({ deviceId }: { deviceId: string }) {
   });
   useAgentNotifications(agents.data, activeAgentId);
   return (
+    // The shell fills the viewport and never scrolls itself: each page scrolls its own content,
+    // so the headers (mobile top bar, DM header, call bar) stay put. `min-h-0` keeps `main` from
+    // growing to its content's height in the phone layout's column.
     <div className="flex h-full flex-col sm:flex-row">
       <MobileNav />
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Outlet />
       </main>
       <CommandPalette />

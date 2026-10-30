@@ -115,7 +115,11 @@ export function MessageList({
   useJumpTo(ref, messages, jumpToSeq, onJumpHandled);
 
   return (
-    <div ref={ref} className="flex-1 overflow-y-auto pb-4">
+    <div
+      ref={ref}
+      data-testid="message-list"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4"
+    >
       <div ref={topSentinel} />
       {hasMore && (
         <div className="flex justify-center py-3 text-muted-foreground text-xs">
