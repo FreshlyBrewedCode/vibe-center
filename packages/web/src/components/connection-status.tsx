@@ -17,13 +17,13 @@ export function ConnectionStatus() {
   }, [state]);
   if (!show) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.5rem)] z-50 flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 flex justify-center">
       <div
         role="status"
         data-testid="connection-status"
-        className="flex items-center gap-1.5 rounded-full border bg-background/95 px-3 py-1 text-muted-foreground text-xs shadow-sm"
+        className="elev flex animate-vc-pop items-center gap-2 rounded-full border border-line-strong bg-card px-3.5 py-1.5 text-muted-foreground text-xs"
       >
-        <Loader2 className="size-3 animate-spin" />
+        <Loader2 className="size-3 animate-spin text-presence-waiting" />
         Reconnecting…
       </div>
     </div>

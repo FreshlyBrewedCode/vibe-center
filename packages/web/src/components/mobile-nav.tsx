@@ -1,53 +1,93 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu } from "lucide-react";
-import { useState } from "react";
-import { useAgent } from "@/lib/queries";
-import { AgentAvatar, presenceLabel } from "./agent-avatar";
-import { SidebarContent } from "./sidebar";
-import { Button } from "./ui/button";
-import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
-import { GlobalCallIndicator } from "./voice/call-indicator";
+import { Brain, ChevronLeft, MessageSquare, Plug, Settings } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
-/** Below the `sm` breakpoint the persistent Sidebar is hidden; this top bar + drawer replaces it. */
-export function MobileNav() {
-  const [open, setOpen] = useState(false);
-  const agentId = useRouterState({ select: (s) => /^\/agents\/([^/]+)/.exec(s.location.pathname)?.[1] });
-  const agent = useAgent(agentId ?? "");
+/**
+ * Phone navigation (below `sm`). There is no sidebar: the agent list is the home screen with a tab
+ * bar (Agents, Memories, Tools, Settings) and every other screen pushes over it with a back
+ * chevron in its header.
+ */
+
+const TABS = [
+  { to: "/", label: "Agents", icon: MessageSquare, match: (p: string) => p === "/" },
+  { to: "/memories", label: "Memories", icon: Brain, match: (p: string) => p.startsWith("/memories") },
+  { to: "/settings/mcp", label: "Tools", icon: Plug, match: (p: string) => p === "/settings/mcp" },
+  {
+    to: "/settings",
+    label: "Settings",
+    icon: Settings,
+    match: (p: string) => p.startsWith("/settings") && p !== "/settings/mcp",
+  },
+] as const;
+
+/** Shown on the top-level screens only; the shell decides (routes/_app.tsx). */
+export function MobileTabBar() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
-    <div className="sm:hidden">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-sidebar px-2 text-sidebar-foreground">
-        <Button variant="ghost" size="icon" aria-label="Open agent list" onClick={() => setOpen(true)}>
-          <Menu className="size-5" />
-        </Button>
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" className="w-72 gap-0 bg-sidebar p-0 text-sidebar-foreground">
-            <SheetTitle className="sr-only">Agents</SheetTitle>
-            <SidebarContent onNavigate={() => setOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        {agent ? (
+    <nav
+      aria-label="Sections"
+      className="flex shrink-0 items-start justify-around border-line border-t bg-panel px-2 pt-2 pb-2 sm:hidden"
+    >
+      {TABS.map((t) => {
+        const on = t.match(pathname);
+        return (
           <Link
-            to="/agents/$agentId"
-            params={{ agentId: agent.id }}
-            className="flex min-w-0 flex-1 items-center gap-2"
+            key={t.to}
+            to={t.to}
+            aria-current={on ? "page" : undefined}
+            className={cn(
+              "flex w-16 flex-col items-center gap-1 rounded-lg py-1 text-[10.5px] transition-colors",
+              on ? "font-medium text-foreground" : "text-muted-foreground",
+            )}
           >
-            <AgentAvatar avatar={agent.avatar} presence={agent.presence} size="sm" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-medium text-sm leading-tight">{agent.name}</span>
-              <span
-                data-testid="mobile-presence"
-                className="block truncate text-muted-foreground text-xs leading-tight"
-              >
-                {presenceLabel[agent.presence]}
-                {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
-              </span>
-            </span>
+            <t.icon className="size-[22px]" strokeWidth={on ? 2.2 : 1.8} />
+            {t.label}
           </Link>
-        ) : (
-          <span className="flex-1 truncate font-semibold text-sm">Vibe Center</span>
-        )}
-      </header>
-      <GlobalCallIndicator exceptAgentId={agent?.id} className="bg-sidebar text-sidebar-foreground" />
-    </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Whether the tab bar belongs under this route (home, memories, settings). */
+export function hasTabBar(pathname: string): boolean {
+  return pathname === "/" || pathname.startsWith("/memories") || pathname.startsWith("/settings");
+}
+
+/**
+ * A pushed screen's header: back chevron on the phone (desktop pages show the title only).
+ * `backTo` defaults to the agent list.
+ */
+export function PageHeader({
+  title,
+  description,
+  backTo = "/",
+  backLabel = "Back to agents",
+  actions,
+  className,
+}: {
+  title: string;
+  description?: ReactNode;
+  backTo?: "/" | "/settings" | "/memories";
+  backLabel?: string;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <header className={cn("flex shrink-0 items-start gap-2 px-3 pt-3 pb-2 sm:px-8 sm:pt-7 sm:pb-3", className)}>
+      <Link
+        to={backTo}
+        aria-label={backLabel}
+        className="-ml-1 flex size-10 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted sm:hidden"
+      >
+        <ChevronLeft className="size-6" />
+      </Link>
+      <div className="min-w-0 flex-1 pt-1.5 sm:pt-0">
+        <h1 className="truncate font-semibold text-xl tracking-tight sm:text-2xl">{title}</h1>
+        {description && <p className="mt-1 text-muted-foreground text-sm">{description}</p>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-1 pt-1 sm:pt-0">{actions}</div>}
+    </header>
   );
 }

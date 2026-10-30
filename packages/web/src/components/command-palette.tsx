@@ -1,6 +1,6 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import type { MessageSearchHit } from "@vibe-center/shared";
-import { Bot, MessageSquare, Moon, Plus, Settings, SquarePen, Sun, SunMoon } from "lucide-react";
+import { Bot, MessageSquare, Moon, Phone, Plus, Settings, SquarePen, Sun, SunMoon } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   CommandDialog,
@@ -12,9 +12,13 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { setPaletteOpen, usePaletteOpen } from "@/lib/palette";
-import { searchMessages, useAgents, useNewSession } from "@/lib/queries";
+import { searchMessages, useAgents, useNewSession, useVoiceStatus } from "@/lib/queries";
 import { setTheme, type Theme, useTheme } from "@/lib/theme";
-import { AgentAvatar } from "./agent-avatar";
+import { cn } from "@/lib/utils";
+import { AgentAvatar, statusLine } from "./agent-avatar";
+import { Badge } from "./ui/badge";
+import { reportFailure } from "./voice/call";
+import { startCall } from "./voice/call-client";
 
 const THEME_ORDER: Theme[] = ["light", "dark", "system"];
 const THEME_ICON = { light: Sun, dark: Moon, system: SunMoon };
@@ -31,7 +35,11 @@ function renderSnippet(snippet: string): ReactNode[] {
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
   while ((m = re.exec(snippet))) {
     if (m.index > last) parts.push(snippet.slice(last, m.index));
-    parts.push(<mark key={i++}>{m[1]}</mark>);
+    parts.push(
+      <mark key={i++} className="rounded-[3px] bg-presence-waiting/25 text-foreground">
+        {m[1]}
+      </mark>,
+    );
     last = m.index + m[0].length;
   }
   if (last < snippet.length) parts.push(snippet.slice(last));
@@ -44,8 +52,10 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const agents = useAgents();
   const theme = useTheme();
+  const voice = useVoiceStatus();
   const agentId = useRouterState({ select: (s) => /^\/agents\/([^/]+)/.exec(s.location.pathname)?.[1] });
-  const newSession = useNewSession(agents.data?.find((a) => a.id === agentId)?.conversationId ?? "");
+  const current = agents.data?.find((a) => a.id === agentId);
+  const newSession = useNewSession(current?.conversationId ?? "");
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<MessageSearchHit[]>([]);
   const seq = useRef(0);
@@ -77,6 +87,7 @@ export function CommandPalette() {
 
   const needle = query.trim().toLowerCase();
   const matchingAgents = (agents.data ?? []).filter((a) => a.name.toLowerCase().includes(needle));
+  const ThemeIcon = THEME_ICON[theme];
 
   return (
     <CommandDialog
@@ -95,23 +106,39 @@ export function CommandPalette() {
         <CommandEmpty>Nothing found.</CommandEmpty>
         {matchingAgents.length > 0 && (
           <CommandGroup heading="Agents">
-            {matchingAgents.map((a) => (
-              <CommandItem key={a.id} value={a.id} onSelect={() => go("/agents/$agentId", { agentId: a.id })}>
-                <AgentAvatar avatar={a.avatar} size="sm" />
-                {a.name}
-                {a.unread > 0 && (
-                  <span className="ml-auto text-muted-foreground text-xs">{a.unread} new</span>
-                )}
-              </CommandItem>
-            ))}
+            {matchingAgents.map((a) => {
+              const s = statusLine(a);
+              return (
+                <CommandItem key={a.id} value={a.id} onSelect={() => go("/agents/$agentId", { agentId: a.id })}>
+                  <AgentAvatar avatar={a.avatar} presence={a.presence} size={24} surface="var(--card)" />
+                  <span className="font-medium">{a.name}</span>
+                  <span className={cn("min-w-0 truncate text-sm", s.className)}>
+                    {a.presence === "idle" && a.description ? a.description : s.text}
+                  </span>
+                  <span className="flex-1" />
+                  {a.unread > 0 && <Badge className="h-[18px] min-w-[18px] px-1.5 text-2xs">{a.unread}</Badge>}
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
         )}
         {!needle && (
           <CommandGroup heading="Actions">
+            {current && voice.data?.worker.state === "ok" && (
+              <CommandItem
+                value="call"
+                onSelect={() => {
+                  close();
+                  startCall(current.id).catch(reportFailure("start the call"));
+                }}
+              >
+                <Phone /> Call {current.name}
+              </CommandItem>
+            )}
             <CommandItem value="new-agent" onSelect={() => go("/agents/new")}>
               <Plus /> New agent
             </CommandItem>
-            {agentId && (
+            {current && (
               <CommandItem
                 value="new-session"
                 onSelect={() => {
@@ -128,15 +155,13 @@ export function CommandPalette() {
             <CommandItem
               value="theme"
               onSelect={() => {
-                const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length] ?? "light";
+                const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length] ?? "dark";
                 setTheme(next);
               }}
             >
-              {(() => {
-                const Icon = THEME_ICON[theme];
-                return <Icon />;
-              })()}
-              Theme: {theme} (select to cycle)
+              <ThemeIcon />
+              Theme: {theme}
+              <span className="text-muted-foreground text-xs">select to cycle</span>
             </CommandItem>
           </CommandGroup>
         )}
@@ -153,10 +178,13 @@ export function CommandPalette() {
                     onSelect={() => go("/agents/$agentId", { agentId: h.agentId }, { at: h.message.seq })}
                   >
                     <MessageSquare />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-muted-foreground text-xs">{agent?.name ?? "Unknown agent"}</div>
-                      <div className="truncate">{renderSnippet(h.snippet)}</div>
-                    </div>
+                    <span className="shrink-0 font-medium">{agent?.name ?? "Unknown agent"}</span>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {renderSnippet(h.snippet)}
+                    </span>
+                    <time className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                      {new Date(h.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </time>
                   </CommandItem>
                 );
               })}

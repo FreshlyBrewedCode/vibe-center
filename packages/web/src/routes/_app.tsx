@@ -2,12 +2,15 @@ import { createFileRoute, Outlet, useRouteContext, useRouterState } from "@tanst
 import { useEffect } from "react";
 import { CommandPalette } from "@/components/command-palette";
 import { ConnectionStatus } from "@/components/connection-status";
-import { MobileNav } from "@/components/mobile-nav";
+import { hasTabBar, MobileTabBar } from "@/components/mobile-nav";
 import { Sidebar } from "@/components/sidebar";
+import { GlobalCallIndicator } from "@/components/voice/call-indicator";
 import { useLiveEvents } from "@/lib/events";
+import { useIsMobile } from "@/lib/media";
 import { useAgentNotifications } from "@/lib/notifications";
 import { setPaletteOpen } from "@/lib/palette";
 import { useAgents, useMe } from "@/lib/queries";
+import { toggleSidebar } from "@/lib/sidebar";
 import { useUnreadTitle } from "@/lib/title";
 import { SignInMessage } from "./login";
 
@@ -22,13 +25,17 @@ function AppShell() {
   return <SignedIn deviceId={me.data.id} />;
 }
 
-/** ⌘K / Ctrl+K opens the command palette from anywhere in the signed-in app. */
-function useCommandPaletteShortcut(): void {
+/** ⌘K / Ctrl+K opens the command palette, ⌘\ / Ctrl+\ toggles the sidebar, from anywhere. */
+function useShellShortcuts(): void {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
+      } else if (e.key === "\\") {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -39,22 +46,23 @@ function useCommandPaletteShortcut(): void {
 function SignedIn({ deviceId }: { deviceId: string }) {
   const { queryClient } = useRouteContext({ from: "__root__" });
   useLiveEvents(queryClient, deviceId);
-  useCommandPaletteShortcut();
+  useShellShortcuts();
   const agents = useAgents();
   useUnreadTitle(agents.data);
-  const activeAgentId = useRouterState({
-    select: (s) => /^\/agents\/([^/]+)/.exec(s.location.pathname)?.[1] ?? null,
-  });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const activeAgentId = /^\/agents\/([^/]+)/.exec(pathname)?.[1] ?? null;
   useAgentNotifications(agents.data, activeAgentId);
+  const mobile = useIsMobile();
   return (
     // The shell fills the viewport and never scrolls itself: each page scrolls its own content,
-    // so the headers (mobile top bar, DM header, call bar) stay put. `min-h-0` keeps `main` from
-    // growing to its content's height in the phone layout's column.
-    <div className="flex h-full flex-col sm:flex-row">
-      <MobileNav />
+    // so the headers (DM header, call strip) stay put. `min-h-0` keeps `main` from growing to
+    // its content's height in the phone layout's column.
+    <div className="flex h-full">
       <Sidebar />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {mobile && <GlobalCallIndicator exceptAgentId={activeAgentId ?? undefined} variant="mobile" />}
         <Outlet />
+        {mobile && hasTabBar(pathname) && <MobileTabBar />}
       </main>
       <CommandPalette />
       <ConnectionStatus />
