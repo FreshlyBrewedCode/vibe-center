@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import type { AgentView } from "@vibe-center/shared";
 import { Brain, Plus, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { setPaletteOpen } from "@/lib/palette";
 import { useAgents } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./agent-avatar";
+import { GlobalCallIndicator } from "./voice/call-indicator";
 
 const URGENT = new Set<AgentView["presence"]>(["waiting", "error"]);
 const BUSY = new Set<AgentView["presence"]>(["thinking", "working", "in_call"]);
@@ -42,6 +43,9 @@ export function SidebarContent({
   const agents = useAgents();
   const connection = useConnectionState();
   const sorted = agents.data ? sortAgents(agents.data) : undefined;
+  const activeAgentId = useRouterState({
+    select: (s) => /^\/agents\/([^/]+)/.exec(s.location.pathname)?.[1],
+  });
   const hideLabel = compact ? "max-md:hidden" : "";
   return (
     <>
@@ -112,6 +116,7 @@ export function SidebarContent({
           </li>
         ))}
       </ul>
+      <GlobalCallIndicator exceptAgentId={activeAgentId} onNavigate={onNavigate} compact={compact} />
       <div className="border-t p-2">
         <Link
           to="/memories"

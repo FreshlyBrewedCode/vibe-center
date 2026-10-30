@@ -57,7 +57,7 @@ export function CallButton({ agent }: { agent: AgentView }) {
   );
 }
 
-const stateLabel: Record<CallState, string> = {
+export const stateLabel: Record<CallState, string> = {
   connecting: "Connecting…",
   listening: "Listening",
   thinking: "Thinking",
@@ -65,7 +65,7 @@ const stateLabel: Record<CallState, string> = {
   ended: "Ended",
 };
 
-const stateDot: Record<CallState, string> = {
+export const stateDot: Record<CallState, string> = {
   connecting: "bg-presence-idle animate-pulse",
   listening: "bg-presence-working",
   thinking: "bg-presence-thinking animate-pulse",
@@ -87,6 +87,10 @@ export function CallBar({ agent }: { agent: AgentView }) {
 
   if (!call && !starting) return null;
   const here = !call || call.deviceId === me.data?.id;
+  // Mic/mute and hang-up need the actual RTCPeerConnection, which lives only in the tab that
+  // started the call (`local` is in-memory, per tab): `here` alone isn't enough, since the same
+  // device's cookie is shared by every tab. A tab without it still ends the call (`hangUpRemote`).
+  const holdsSession = !call || local?.callId === call.id;
   const state: CallState = call?.state ?? "connecting";
   return (
     <div data-testid="call-bar" className="shrink-0 border-b bg-muted/40 px-4 py-2">
@@ -110,7 +114,7 @@ export function CallBar({ agent }: { agent: AgentView }) {
           </span>
         )}
         <span className="flex-1" />
-        {here && mine && (
+        {holdsSession && mine && (
           <Button
             variant="ghost"
             size="icon"
@@ -126,7 +130,7 @@ export function CallBar({ agent }: { agent: AgentView }) {
           variant="destructive"
           size="sm"
           data-testid="call-hangup"
-          onClick={() => (here || !call ? hangUp() : hangUpRemote(call.id)).catch(() => {})}
+          onClick={() => (holdsSession ? hangUp() : hangUpRemote(call.id)).catch(() => {})}
         >
           <PhoneOff className="size-4" />
           Hang up
@@ -172,7 +176,9 @@ function LiveTranscript({ agent, since }: { agent: AgentView; since: number }) {
         <p key={m.id} className="truncate">
           <span className="text-muted-foreground">{m.role === "user" ? "You" : agent.name}: </span>
           {m.text}
-          {m.status === "cancelled" && <span className="text-muted-foreground"> (interrupted)</span>}
+          {(m.status === "cancelled" || m.data?.interrupted) && (
+            <span className="text-muted-foreground"> (interrupted)</span>
+          )}
         </p>
       ))}
     </div>

@@ -73,14 +73,18 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-          <AgentAvatar avatar={agent.avatar} presence={agent.presence} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold text-sm">{agent.name}</div>
-            <div data-testid="presence" className="truncate text-muted-foreground text-xs">
-              {presenceLabel[agent.presence]}
-              {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
+          {/* The agent's name already shows in the mobile top bar (MobileNav); avoid repeating it. */}
+          <div className="hidden min-w-0 flex-1 items-center gap-3 sm:flex">
+            <AgentAvatar avatar={agent.avatar} presence={agent.presence} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-semibold text-sm">{agent.name}</div>
+              <div data-testid="presence" className="truncate text-muted-foreground text-xs">
+                {presenceLabel[agent.presence]}
+                {agent.presenceDetail ? ` · ${agent.presenceDetail}` : ""}
+              </div>
             </div>
           </div>
+          <div className="flex-1 sm:hidden" />
           <CallButton agent={agent} />
           <Tooltip>
             <TooltipTrigger asChild>

@@ -75,12 +75,14 @@ test("template picker, ⌘K switch/search, details panel, edit, theme, mobile, d
   await page.getByRole("option", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
 
-  // Mobile viewport: the persistent sidebar is replaced by a hamburger + drawer.
+  // Mobile viewport: the persistent sidebar is replaced by a hamburger + drawer, and the agent's
+  // name/presence show once, in the top bar (not duplicated in the DM header below it).
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId("sidebar-agent").first()).not.toBeVisible();
   await page.getByRole("button", { name: "Open agent list" }).click();
   await page.getByRole("link", { name: /Second/ }).click();
-  await expect(page.getByTestId("presence")).toBeVisible();
+  await expect(page.getByTestId("mobile-presence")).toBeVisible();
+  await expect(page.getByTestId("presence")).not.toBeVisible();
   await page.setViewportSize({ width: 1280, height: 800 });
 
   // Device revoke: confirming for "this device" signs it out.
