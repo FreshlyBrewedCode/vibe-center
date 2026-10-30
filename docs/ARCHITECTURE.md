@@ -307,7 +307,9 @@ tool selection, memories for the UI, and the gateway.
   - **Detection:** the upstream transport's `fetch` is `McpOAuth.fetchFor`. A 401 with no usable
     token sets the server's status to `needs_auth` ("Needs sign-in" with a Sign in button) and
     fails with `NeedsSignInError`, whose text is what an agent gets as the tool error. Nothing is
-    registered anywhere until the user clicks Sign in.
+    registered anywhere until the user clicks Sign in; the resource metadata is read once (a GET)
+    for the server's `resource_name`, so Settings can say what the sign-in is for and show a
+    known server's approval hint (`APPROVAL_HINTS` in `components/mcp/oauth.tsx`).
   - **Start** (`POST /api/mcp/servers/:id/oauth {returnTo, popup}`): an unauthenticated
     `initialize` reads `WWW-Authenticate` (resource_metadata, scope); RFC 9728 resource metadata
     (required; its `resource` must match the URL) names the authorization server; its RFC 8414 /
@@ -332,7 +334,9 @@ tool selection, memories for the UI, and the gateway.
     otherwise kill each other); the request is retried once. `invalid_grant`/`invalid_client`
     drop the tokens (and a dead dynamic client) and flip to `needs_auth`; other refresh errors are
     transient (status error, tokens kept). A 403 `insufficient_scope` records the challenged
-    scopes for the next sign-in and flips to `needs_auth`.
+    scopes for the next sign-in and flips to `needs_auth`. **Without a refresh token** no refresh
+    grant is ever tried: a token past its expiry isn't sent (the server shows "Needs sign-in" as
+    soon as it expires, used or not), and a 401 drops it ("expired or was revoked").
   - **Disconnect** (`DELETE /api/mcp/servers/:id/oauth`): RFC 7009 revocation of the refresh and
     access tokens when the server has a revocation endpoint (best effort), tokens dropped, status
     `needs_auth`. Deleting the server revokes too (up to 3 s). Changing its URL or client ID
@@ -342,9 +346,18 @@ tool selection, memories for the UI, and the gateway.
     an "OAuth (advanced)" section for a client ID/secret and scopes, showing the redirect URI to
     register. A failed gateway call whose server needs sign-in shows "needs sign-in" with "Fix in
     Settings" in the DM.
+  - **T3 Code** as the upstream (its own MCP server, `https://<host>.ts.net/mcp`): checked against
+    the real one. Resource metadata names it ("T3 Code") and both scopes
+    (`orchestration:read orchestration:operate`), which the app requests (T3's challenge has no
+    scope; T3 grants by the access level picked on its approval page anyway). Registration is
+    stateless (a signed client id), https or loopback redirect URIs are accepted, the authorize
+    endpoint forwards to T3's `/connect-agent` page (Read only … Full access, and a pairing code
+    from T3 → Settings → Connections unless the browser is signed in to T3 with manage access),
+    `iss` is sent. No refresh tokens, no revocation endpoint: a sign-in lasts 30 days, then
+    "Needs sign-in"; Disconnect only forgets the token here (revoke it in T3's Connections).
   - **Tests:** `test/fixtures/oauth-mcp-server.ts` is an MCP server with its own authorization
     server (resource metadata, AS metadata with path insertion, registration, auto-approving
-    authorize, token with PKCE and refresh rotation, revocation, `iss`, `/test/*` controls);
+    authorize, token with PKCE and refresh rotation, revocation, `iss`, `/test/*` controls; `t3Like` mimics T3 Code: no refresh tokens, no revocation, no challenge scope);
     `test/oauth.test.ts` and `e2e/mcp-oauth.spec.ts` use it.
 - **Secrets:** env values and headers are stored in SQLite (data dir 0700, DB 0600) and never
   returned: the API shows keys and, for values of 12+ chars, the last 4 (`SecretMap`). Writes send

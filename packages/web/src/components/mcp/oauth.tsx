@@ -35,6 +35,14 @@ export function useMcpSignIn(server: McpServerView) {
   return { signIn, pending: start.isPending };
 }
 
+/**
+ * What a known server's approval page will ask for, keyed by the `resource_name` of its
+ * resource metadata.
+ */
+const APPROVAL_HINTS: Record<string, string> = {
+  "T3 Code": "You may need a pairing code from T3 → Settings → Connections.",
+};
+
 /** "in 59 min", "in 3 h", "expired". */
 function expiry(at: number): string {
   const ms = at - Date.now();
@@ -83,9 +91,17 @@ export function McpOAuthStatus({ server: s }: { server: McpServerView }) {
             </p>
           </>
         ) : (
-          <p className="text-muted-foreground">
-            {s.status.message ?? "This server needs you to sign in."} Every agent uses this one sign-in.
-          </p>
+          <>
+            <p className="text-muted-foreground">
+              {o.resourceName && <span className="font-medium text-foreground">{o.resourceName} · </span>}
+              {s.status.message ?? "This server needs you to sign in."} Every agent uses this one sign-in.
+            </p>
+            {o.resourceName && APPROVAL_HINTS[o.resourceName] && (
+              <p data-testid="mcp-oauth-hint" className="text-muted-foreground">
+                {APPROVAL_HINTS[o.resourceName]}
+              </p>
+            )}
+          </>
         )}
       </div>
       {needsAuth ? (
@@ -103,7 +119,12 @@ export function McpOAuthStatus({ server: s }: { server: McpServerView }) {
             disabled={disconnect.isPending}
             onClick={() =>
               disconnect.mutate(s.id, {
-                onSuccess: () => toast.success(`${s.name}: signed out`),
+                onSuccess: () =>
+                  o.revocable
+                    ? toast.success(`${s.name}: signed out`)
+                    : toast.success(`${s.name}: signed out here`, {
+                        description: `${o.resourceName ?? "The server"} offers no way to revoke the token from here; revoke the access there too.`,
+                      }),
                 onError: (e) => toast.error(e.message),
               })
             }
