@@ -33,19 +33,32 @@ const browser = await chromium.launch({
 try {
   for (const d of MANIFEST) {
     if (only.size && !only.has(d.slug)) continue;
-    const shots: { hash: string; file: string; viewport: [number, number] }[] = SCREENS.map((s) => ({
-      hash: `${d.slug}/${s}`,
-      file: `${d.index}-${d.slug}-${s === "extra" ? d.extra.label : s}`,
-      viewport: s === "extra" ? d.extra.viewport : s === "mobile-call" ? [390, 844] : [1440, 900],
-    }));
+    const shots: { hash: string; file: string; viewport: [number, number]; dark: boolean }[] = d.shots
+      ? d.shots.map((s) => ({
+          hash: `${d.slug}/${s.screen}`,
+          file: `${d.index}-${d.file ?? d.slug}-${s.label}`,
+          viewport: s.viewport,
+          dark: s.dark,
+        }))
+      : SCREENS.map((s) => ({
+          hash: `${d.slug}/${s}`,
+          file: `${d.index}-${d.slug}-${s === "extra" ? d.extra.label : s}`,
+          viewport: s === "extra" ? d.extra.viewport : s === "mobile-call" ? [390, 844] : [1440, 900],
+          dark: d.dark,
+        }));
     for (const b of d.bonus ?? [])
-      shots.push({ hash: b.hash, file: `${d.index}-${d.slug}-${b.label}`, viewport: b.viewport });
+      shots.push({
+        hash: b.hash,
+        file: `${d.index}-${d.slug}-${b.label}`,
+        viewport: b.viewport,
+        dark: d.dark,
+      });
     for (const s of shots) {
       const mobile = s.viewport[0] < 500;
       const context = await browser.newContext({
         viewport: { width: s.viewport[0], height: s.viewport[1] },
         deviceScaleFactor: mobile ? 2 : 1,
-        colorScheme: d.dark ? "dark" : "light",
+        colorScheme: s.dark ? "dark" : "light",
         reducedMotion: "reduce",
       });
       const page = await context.newPage();

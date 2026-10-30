@@ -2,7 +2,7 @@
   "name": "@vibe-center/design-explorations",
   "private": true,
   "type": "module",
-  "description": "Throwaway UI design mocks (5 directions) for the Vibe Center redesign. Not part of the app.",
+  "description": "Throwaway UI design mocks (round 1: 5 directions, round 2: Nocturne) for the Vibe Center redesign. Not part of the app.",
   "scripts": {
     "dev": "vite --port 5199",
     "shoot": "bun shoot.ts",

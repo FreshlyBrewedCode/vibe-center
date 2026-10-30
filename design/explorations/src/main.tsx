@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DIRECTIONS, SCREENS, type Screen } from "./directions";
+import { DIRECTIONS, SCREENS } from "./directions";
 import "./styles.css";
 
 /** `#/<slug>/<screen>` renders one screen full-bleed (what shoot.ts captures); no hash shows the index. */
@@ -18,8 +18,8 @@ function App() {
   const hash = useHash();
   const [slug = "", screen = ""] = hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   const dir = DIRECTIONS.find((d) => d.slug === slug);
-  if (dir && (SCREENS as readonly string[]).includes(screen)) {
-    const Screen = dir.screens[screen as Screen];
+  const Screen = dir?.screens[screen];
+  if (dir && Screen) {
     return (
       <div className={dir.rootClass} style={{ height: "100%", background: "var(--bg)", color: "var(--fg)" }}>
         <Screen />
@@ -44,8 +44,9 @@ function Index() {
           </h2>
           <p className="mt-1 max-w-3xl text-neutral-600 text-sm">{d.idea}</p>
           <div className="mt-4 flex flex-wrap gap-4">
-            {SCREENS.map((s) => {
-              const [w, h] = d.viewport(s);
+            {(d.shots ?? SCREENS.map((s) => ({ screen: s, viewport: d.viewport(s) }))).map((shot) => {
+              const s = shot.screen;
+              const [w, h] = shot.viewport;
               const scale = s.startsWith("mobile") ? 0.42 : 0.33;
               return (
                 <a

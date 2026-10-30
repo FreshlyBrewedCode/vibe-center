@@ -21,6 +21,8 @@
   --color-warn: var(--warn);
   --color-info: var(--info);
   --color-call: var(--call);
+  --color-accent-soft: var(--accent-soft);
+  --color-line-strong: var(--line-strong);
 }
 
 html,
