@@ -4,7 +4,24 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLoadOlderMessages } from "@/lib/queries";
 import { MessageItem } from "./message-item";
 
-const HEADER_KINDS = new Set<Message["kind"]>(["text", "voice_transcript"]);
+/**
+ * Groups runs by sender identity, not just role: a plain user message, a relayed agent-to-agent
+ * message/reply (keyed by the other agent) and the DM's own agent are all distinct senders, and
+ * a run never spans a session divider. Every kind participates (not just text), so a tool call or
+ * permission request that opens a turn gets its own header instead of visually sitting under
+ * whatever the previous header happened to be (e.g. the user's last message).
+ */
+function senderKey(m: Message): string {
+  if (m.kind === "session") return `session:${m.id}`;
+  if (m.role === "user" && (m.kind === "text" || m.kind === "voice_transcript")) {
+    const data = m.data;
+    if (data?.fromAgentId && (data.source === "agent" || data.source === "event")) {
+      return `relay:${data.fromAgentId}:${data.source}`;
+    }
+    return "user";
+  }
+  return m.role; // "agent" | "system" (and the rare role="user" non-relay card, if any)
+}
 
 function sameDay(a: number, b: number): boolean {
   const x = new Date(a);
@@ -113,16 +130,15 @@ export function MessageList({
       {messages.map((m, i) => {
         const prev = messages[i - 1];
         const showDate = !prev || !sameDay(prev.createdAt, m.createdAt);
-        // A sender header starts each run of text from the same side.
+        // A sender header starts each run from the same sender (session dividers always start a
+        // fresh run, and session itself never gets one).
         const showHeader =
-          HEADER_KINDS.has(m.kind) &&
-          !(
-            prev &&
-            prev.role === m.role &&
-            HEADER_KINDS.has(prev.kind) &&
-            m.createdAt - prev.createdAt < 5 * 60_000 &&
-            !showDate
-          );
+          m.kind !== "session" &&
+          (!prev ||
+            prev.kind === "session" ||
+            senderKey(prev) !== senderKey(m) ||
+            m.createdAt - prev.createdAt >= 5 * 60_000 ||
+            showDate);
         return (
           <div key={m.id} data-seq={m.seq}>
             {showDate && (

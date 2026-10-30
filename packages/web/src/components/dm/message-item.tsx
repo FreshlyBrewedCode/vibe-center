@@ -50,19 +50,24 @@ export function MessageItem({
             <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground/60" />
           )}
           {m.status === "cancelled" && <p className="text-muted-foreground text-xs italic">Stopped</p>}
+          {m.status !== "cancelled" && m.data?.interrupted && (
+            <p className="text-muted-foreground text-xs italic">
+              Interrupted — you may not have heard all of this
+            </p>
+          )}
         </Row>
       );
     case "thought":
       return (
-        <Indented>
+        <Row message={m} agent={agent} showHeader={showHeader}>
           <Collapsible label="Thinking" className="text-muted-foreground">
             <p className="whitespace-pre-wrap text-xs">{m.text}</p>
           </Collapsible>
-        </Indented>
+        </Row>
       );
     case "plan":
       return (
-        <Indented>
+        <Row message={m} agent={agent} showHeader={showHeader}>
           <Collapsible label="Plan">
             <ul className="space-y-0.5 text-xs">
               {m.data.entries.map((e) => (
@@ -75,28 +80,28 @@ export function MessageItem({
               ))}
             </ul>
           </Collapsible>
-        </Indented>
+        </Row>
       );
     case "tool_call":
       return (
-        <Indented>
+        <Row message={m} agent={agent} showHeader={showHeader}>
           <ToolCard message={m} />
-        </Indented>
+        </Row>
       );
     case "permission":
       return (
-        <Indented>
+        <Row message={m} agent={agent} showHeader={showHeader}>
           <PermissionCard message={m} />
-        </Indented>
+        </Row>
       );
     case "error":
       return (
-        <Indented>
+        <Row message={m} agent={agent} showHeader={showHeader}>
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <span className="whitespace-pre-wrap">{m.text}</span>
           </div>
-        </Indented>
+        </Row>
       );
   }
 }
@@ -153,10 +158,6 @@ function Row({
       </div>
     </div>
   );
-}
-
-function Indented({ children }: { children: React.ReactNode }) {
-  return <div className="py-0.5 pr-4 pl-15">{children}</div>;
 }
 
 function Collapsible({
