@@ -22,7 +22,10 @@ function SettingsLayout() {
     <div className="vc-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl">
         <PageHeader title="Settings" />
-        <nav className="vc-noscroll mx-3 flex gap-1 overflow-x-auto border-line border-b sm:mx-8">
+        <nav
+          aria-label="Settings sections"
+          className="vc-noscroll mx-3 flex gap-1 overflow-x-auto border-line border-b sm:mx-8"
+        >
           {SECTIONS.map((s) => (
             <Link
               key={s.to}

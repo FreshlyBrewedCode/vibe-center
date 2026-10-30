@@ -40,7 +40,11 @@ test("add an MCP server, enable its tools for an agent, call one through the gat
 
   // Settings → MCP servers → add a stdio server with a secret env var.
   await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("link", { name: "MCP servers" }).click();
+  // The sidebar has an "MCP servers" link too (straight to this page); use the settings nav.
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("link", { name: "MCP servers" })
+    .click();
   await expect(page.getByTestId("mcp-server-builtin")).toContainText("Built-in");
   await page.getByRole("button", { name: "Add MCP server" }).click();
   await page.getByLabel("Name").fill("upstream");

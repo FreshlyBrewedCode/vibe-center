@@ -69,7 +69,7 @@ export function GlobalCallIndicator({
             <span className={cn("ml-2", permission ? "text-presence-waiting" : "text-call")}>{status}</span>
           </TooltipContent>
         </Tooltip>
-        <CallTimer since={call.startedAt} className="text-2xs" />
+        <CallTimer since={call.startedAt} className="text-2xs" testId={null} />
         {hangup}
       </div>
     );
@@ -92,7 +92,7 @@ export function GlobalCallIndicator({
         <span className="min-w-0 flex-1 leading-tight">
           <span className="flex items-baseline gap-2">
             <span className="truncate font-medium text-sm">{agent.name}</span>
-            <CallTimer since={call.startedAt} className="text-xs" />
+            <CallTimer since={call.startedAt} className="text-xs" testId={null} />
           </span>
           <span
             className={cn(

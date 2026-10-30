@@ -218,7 +218,7 @@ async function seed(page: Page): Promise<Seed> {
   await until(dana, (m) => m.role === "user" && m.text.includes("mobile pass"));
   // Dana thinks forever (presence: thinking), Max works for two minutes, Sage has unread, Juno errors.
   await say(dana, "hang on, think about the release plan");
-  await say(max, "edits slowly: roll out the tailscale serve change");
+  await say(max, "edits slowly: roll out the tailscale serve config");
   await say(sage, "Summarise what you read about turn detection latency.");
   await until(sage, (m) => m.role === "agent" && m.status === "complete");
   await say(juno, "Draft the release notes for the mobile pass.");
@@ -487,7 +487,7 @@ async function call(
   await m.getByRole("dialog", { name: /Call with/ }).waitFor();
   await sleep(300);
   await shot(m, "mobile-call-sheet-dark");
-  await m.getByRole("button", { name: "chat" }).click();
+  await m.getByRole("button", { name: "chat", exact: true }).click();
 
   // Approve from the card, let the scenario finish, hang up: the DM shows the spoken rows.
   await page.getByTestId("call-permission").getByRole("button", { name: "Allow" }).click();

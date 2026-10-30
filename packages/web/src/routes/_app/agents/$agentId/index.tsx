@@ -164,7 +164,7 @@ function DmHeader({
               <span className="size-1.5 shrink-0 animate-vc-pulse rounded-full bg-call" />
               <span className="truncate">In a call</span>
               <span aria-hidden>·</span>
-              <CallTimer since={call.startedAt} className="text-call" />
+              <CallTimer since={call.startedAt} className="text-call" testId={null} />
             </>
           ) : (
             <span className="truncate">{s.text}</span>

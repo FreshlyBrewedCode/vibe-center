@@ -95,8 +95,19 @@ export const stateLabel: Record<CallState, string> = {
   ended: "Ended",
 };
 
-/** Elapsed time since `since`, ticking every second, in tabular figures. */
-export function CallTimer({ since, className }: { since: number; className?: string }) {
+/**
+ * Elapsed time since `since`, ticking every second, in tabular figures. Only the call UI's own
+ * timer carries the `call-timer` test id; the header and the sheet pass `testId={null}`.
+ */
+export function CallTimer({
+  since,
+  className,
+  testId = "call-timer",
+}: {
+  since: number;
+  className?: string;
+  testId?: string | null;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -104,7 +115,10 @@ export function CallTimer({ since, className }: { since: number; className?: str
   }, []);
   const s = Math.max(0, Math.floor((now - since) / 1000));
   return (
-    <span data-testid="call-timer" className={cn("text-muted-foreground text-xs tabular-nums", className)}>
+    <span
+      data-testid={testId ?? undefined}
+      className={cn("text-muted-foreground text-xs tabular-nums", className)}
+    >
       {Math.floor(s / 60)}:{String(s % 60).padStart(2, "0")}
     </span>
   );
@@ -177,7 +191,7 @@ export function CallUi({ agent }: { agent: AgentView }) {
             permission ? "bg-presence-waiting" : "bg-call",
           )}
         />
-        {call && <CallTimer since={call.startedAt} className="text-foreground" />}
+        {call && <CallTimer since={call.startedAt} className="text-foreground" testId={null} />}
         <span className="text-muted-foreground">Show call</span>
       </button>
     );
@@ -511,7 +525,7 @@ function CallSheet({ view, onClose }: { view: CallView; onClose: () => void }) {
         >
           <ChevronDown className="size-5" /> Chat
         </button>
-        {call && <CallTimer since={call.startedAt} className="pr-2 text-[15px]" />}
+        {call && <CallTimer since={call.startedAt} className="pr-2 text-[15px]" testId={null} />}
       </div>
       <div className="vc-noscroll relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5">
         <div className="mt-8 flex flex-col items-center">
