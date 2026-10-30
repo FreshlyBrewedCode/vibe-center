@@ -9,6 +9,12 @@ export interface McpSetup {
    * `allowedTools`, e.g. `mcp__vibe`). Harnesses without such a knob ignore it.
    */
   allowedTools: string[];
+  /**
+   * The per-session bearer token in `servers` (the `Authorization` header of the HTTP server
+   * named `server`). Adapters that can reference env vars in MCP config move it out of the
+   * config, which some harnesses put on a command line (see the Claude Code adapter).
+   */
+  credential?: { server: string; token: string };
 }
 
 export interface McpSessionContext {

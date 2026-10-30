@@ -19,6 +19,8 @@ export interface SessionFieldsContext extends AdapterAgent {
 
 /** Extra fields merged into session/new, session/resume and session/load. */
 export interface SessionFields {
+  /** Replaces the MCP servers from the McpSetup (e.g. with secrets moved out of the config). */
+  mcpServers?: acp.McpServer[];
   systemPrompt?: acp.SystemPrompt;
   _meta?: Record<string, unknown>;
 }

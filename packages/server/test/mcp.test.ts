@@ -6,6 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentToolGroup, AgentView, Harness, McpServerView, Memory, Message } from "@vibe-center/shared";
+import { adapters } from "../src/acp/adapters/index.ts";
 import { MAX_HOPS } from "../src/mcp/builtin/agents.ts";
 import { type AppServer, createServer } from "../src/server.ts";
 
@@ -143,6 +144,33 @@ describe("gateway endpoint", () => {
       capabilities: { mcpCapabilities: { http: false } },
     });
     expect(stdio.servers[0]).toMatchObject({ name: "vibe", command: process.execPath });
+  });
+
+  test("Claude Code gets the token through its session env, not in the MCP config (its argv)", async () => {
+    const setup = await app.services.mcp.gateway.forSession({
+      agentId: probe.id,
+      sessionKey: "z",
+      capabilities: { mcpCapabilities: { http: true } },
+    });
+    const token = setup.credential!.token;
+    const fields = adapters["claude-code"].sessionFields({
+      agentId: probe.id,
+      cwd: dataDir,
+      systemPrompt: "",
+      model: null,
+      stateDir: dataDir,
+      capabilities: { mcpCapabilities: { http: true } },
+      mcp: setup,
+    });
+    expect(JSON.stringify(fields.mcpServers)).not.toContain(token);
+    expect(fields.mcpServers?.[0]).toMatchObject({
+      type: "http",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: Claude Code expands it from the env
+      headers: [{ name: "Authorization", value: "Bearer ${VIBE_MCP_TOKEN}" }],
+    });
+    const meta = fields._meta as { claudeCode: { options: { env: Record<string, string> } } };
+    const options = meta.claudeCode.options;
+    expect(options.env.VIBE_MCP_TOKEN).toBe(token);
   });
 });
 

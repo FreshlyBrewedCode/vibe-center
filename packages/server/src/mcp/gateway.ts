@@ -100,6 +100,7 @@ export class McpGateway implements McpProvider {
         },
       ],
       allowedTools,
+      credential: { server: GATEWAY_NAME, token },
     };
   }
 
