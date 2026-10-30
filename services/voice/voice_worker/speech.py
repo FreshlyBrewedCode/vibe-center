@@ -106,11 +106,20 @@ class HttpSTTService(TurnTranscriptionMixin, SegmentedSTTService):
     WAV; see turns.py), with the local Whisper as fallback when the server can't be reached.
     `vocabulary` goes out as the OpenAI `prompt`: the server applies it where its model can."""
 
-    def __init__(self, *, base_url: str, log: TurnLog, vocabulary: list[str] | None = None, **kwargs):
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        log: TurnLog,
+        vocabulary: list[str] | None = None,
+        language: str = "en",
+        **kwargs,
+    ):
         super().__init__(settings=STTSettings(model=HTTP_MODEL, language=Language.EN), **kwargs)
         self._url = f"{base_url.rstrip('/')}/v1/audio/transcriptions"
         self._log = log
         self._vocabulary = vocabulary or []
+        self._language = language  # "" = the model detects it
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=1.0))
 
     def can_generate_metrics(self) -> bool:
@@ -118,7 +127,9 @@ class HttpSTTService(TurnTranscriptionMixin, SegmentedSTTService):
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
         self._log.set("stt_request")
-        data = {"model": HTTP_MODEL, "language": "en", "response_format": "verbose_json"}
+        data = {"model": HTTP_MODEL, "response_format": "verbose_json"}
+        if self._language:
+            data["language"] = self._language
         if self._vocabulary:
             data["prompt"] = vocabulary_prompt(self._vocabulary)
         try:
@@ -192,10 +203,14 @@ def make_stt(
     log: TurnLog,
     *,
     vocabulary: list[str] | None = None,
+    language: str = "en",
     recorder: TurnRecorder | None = None,
 ):
     if stt_url:
-        return HttpSTTService(base_url=stt_url, log=log, vocabulary=vocabulary, recorder=recorder)
+        return HttpSTTService(
+            base_url=stt_url, log=log, vocabulary=vocabulary, language=language, recorder=recorder
+        )
+    # the CPU fallback (base.en) is English-only
     return LocalWhisperSTTService(log=log, vocabulary=vocabulary, recorder=recorder)
 
 

@@ -108,6 +108,7 @@ class CallRequest(BaseModel):
     tts_url: str = ""
     filler: bool = True
     vocabulary: list[str] = []
+    stt_language: str = "en"
     record_turns: int = 0
     sdp: str
     type: str = "offer"
@@ -139,6 +140,7 @@ async def start_call(req: CallRequest):
         tts_url=req.tts_url,
         filler=req.filler,
         vocabulary=[t.strip()[:100] for t in req.vocabulary if t.strip()][:200],
+        stt_language=req.stt_language.strip().lower()[:8],
         record_turns=max(0, min(req.record_turns, 500)),
     )
     # per call: use a GPU server only if it answers right now (one that appears later is used

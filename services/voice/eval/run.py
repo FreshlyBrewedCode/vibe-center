@@ -88,7 +88,9 @@ class Stt:
 
 def vad_events(pcm: bytes) -> list[tuple[int, str]]:
     """(frame index, "start"|"stop") as Pipecat's VAD controller would report them."""
-    vad = SileroVADAnalyzer(sample_rate=SR, params=VADParams(stop_secs=CONFIG.vad_stop_secs))
+    vad = SileroVADAnalyzer(
+        sample_rate=SR, params=VADParams(stop_secs=CONFIG.vad_stop_secs, min_volume=CONFIG.vad_min_volume)
+    )
     vad.set_sample_rate(SR)
     events, speaking = [], False
     for i in range(0, len(pcm) - FRAME + 1, FRAME):
@@ -125,7 +127,7 @@ def old_segments(pcm: bytes, events: list[tuple[int, str]]) -> list[bytes]:
 def turn_audio(pcm: bytes, events: list[tuple[int, str]]) -> bytes:
     """turns.TurnAudio: the whole turn at its last VAD stop."""
     at = dict(events)
-    turn, last = TurnAudio(SR), b""
+    turn, last = TurnAudio(SR, preroll_s=CONFIG.stt_preroll_s), b""
     for k, i in enumerate(range(0, len(pcm) - FRAME + 1, FRAME)):
         turn.add(pcm[i : i + FRAME])
         ev = at.get(k)

@@ -32,6 +32,10 @@ class Config:
     whisper_model: str = field(default_factory=lambda: _env("WHISPER_MODEL", "base.en"))
     # turn-taking: Silero silence before Smart Turn v3 decides (Pipecat's recommended value)
     vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.2")))
+    # Silero also needs this loudness (0-1 over -110..-10 LUFS; Pipecat's default 0.6 = -50 LUFS)
+    vad_min_volume: float = field(default_factory=lambda: float(_env("VAD_MIN_VOLUME", "0.6")))
+    # audio kept before the VAD's speech start, so the first word isn't clipped
+    stt_preroll_s: float = field(default_factory=lambda: float(_env("STT_PREROLL_S", "1.0")))
     # a voice turn that hasn't finished after this long is cancelled with a spoken apology
     prompt_timeout_s: float = field(default_factory=lambda: float(_env("PROMPT_TIMEOUT_S", "45")))
     default_voice: str = field(default_factory=lambda: _env("TTS_VOICE", "af_heart"))
@@ -63,6 +67,8 @@ class CallConfig:
     filler: bool = True
     # terms the STT should recognise (settings + agent names); used where the model supports it
     vocabulary: list[str] = field(default_factory=list)
+    # what the user speaks (ISO 639-1), "" = the model detects it; English-only models ignore it
+    stt_language: str = "en"
     # debug: keep the last N user turns as audio + transcript (0 = off)
     record_turns: int = 0
 

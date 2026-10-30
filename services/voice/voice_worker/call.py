@@ -52,7 +52,9 @@ class Call:
             "filler": cfg.filler,
             "agent": cfg.agent_name,
             "vad_stop_secs": CONFIG.vad_stop_secs,
+            "vad_min_volume": CONFIG.vad_min_volume,
             "vocabulary": len(cfg.vocabulary),
+            "stt_language": cfg.stt_language or "detect",
             "record_turns": cfg.record_turns,
         }
         stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -100,6 +102,7 @@ class Call:
             self.stt_url,
             self.log,
             vocabulary=self.cfg.vocabulary,
+            language=self.cfg.stt_language,
             recorder=self._record if self.cfg.record_turns > 0 else None,
         )
         return cues, stt, make_tts(self.tts_url, self.cfg.voice, self.log)
@@ -140,7 +143,9 @@ class Call:
         user_agg = TurnUserAggregator(
             LLMContext(),
             params=LLMUserAggregatorParams(
-                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=CONFIG.vad_stop_secs)),
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(stop_secs=CONFIG.vad_stop_secs, min_volume=CONFIG.vad_min_volume)
+                ),
                 user_turn_strategies=UserTurnStrategies(stop=[stop]),
                 empty_user_turn=None,
             ),

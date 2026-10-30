@@ -36,6 +36,8 @@ from pipecat.frames.frames import (
 from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregator
 from pipecat.processors.frame_processor import FrameDirection
 
+from .config import CONFIG
+
 PREROLL_S = 1.0
 MAX_TURN_S = 28.0
 
@@ -102,7 +104,7 @@ class TurnTranscriptionMixin:
 
     def _turn_audio(self) -> TurnAudio:
         if self._turn is None or self._turn.sample_rate != self.sample_rate:
-            self._turn = TurnAudio(self.sample_rate)
+            self._turn = TurnAudio(self.sample_rate, preroll_s=CONFIG.stt_preroll_s)
         return self._turn
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):

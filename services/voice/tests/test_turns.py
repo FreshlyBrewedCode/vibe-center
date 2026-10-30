@@ -86,13 +86,19 @@ async def test_each_vad_stop_transcribes_the_whole_turn_so_far():
     # 50 pre-roll frames + speech; the second transcript covers the pause and both halves
     assert texts == ["60 frames", "80 frames", "54 frames"]
     assert all(isinstance(f, TurnTranscriptionFrame) for f in down if isinstance(f, TranscriptionFrame))
-    assert [(turn, text) for turn, _, text in recorded] == [(1, "60 frames"), (1, "80 frames"), (2, "54 frames")]
+    assert [(turn, text) for turn, _, text in recorded] == [
+        (1, "60 frames"),
+        (1, "80 frames"),
+        (2, "54 frames"),
+    ]
 
 
 async def test_the_aggregator_replaces_a_turns_transcript_instead_of_appending():
     agg = TurnUserAggregator(LLMContext())
     await agg._handle_transcription(TurnTranscriptionFrame("Can you check the", "", "now"))
-    await agg._handle_transcription(TurnTranscriptionFrame("Can you check the weather for this weekend", "", "now"))
+    await agg._handle_transcription(
+        TurnTranscriptionFrame("Can you check the weather for this weekend", "", "now")
+    )
     assert agg.aggregation_string() == "Can you check the weather for this weekend"
     await agg._handle_transcription(TranscriptionFrame("and more", "", "now"))  # plain ones still append
     assert agg.aggregation_string() == "Can you check the weather for this weekend and more"
@@ -102,7 +108,10 @@ def test_recordings_keep_the_newest_n_and_overwrite_a_turns_earlier_version(tmp_
     rec = Recordings(tmp_path / "rec")
     pcm = b"\0\0" * SR
     rid = rec.save(keep=2, call_id="c0ffee00-1111", turn=1, pcm=pcm, sample_rate=SR, text="Can you", stt="x")
-    assert rec.save(keep=2, call_id="c0ffee00-1111", turn=1, pcm=pcm, sample_rate=SR, text="Can you go", stt="x") == rid
+    assert (
+        rec.save(keep=2, call_id="c0ffee00-1111", turn=1, pcm=pcm, sample_rate=SR, text="Can you go", stt="x")
+        == rid
+    )
     rec.save(keep=2, call_id="c0ffee00-1111", turn=2, pcm=pcm, sample_rate=SR, text="two", stt="x")
     rec.save(keep=2, call_id="c0ffee00-1111", turn=3, pcm=pcm, sample_rate=SR, text="three", stt="x")
     items = rec.list()
