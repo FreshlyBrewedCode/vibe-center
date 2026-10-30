@@ -1,12 +1,14 @@
 # Vibe Center — UI design explorations
 
-Five directions for the redesign, rendered as React + Tailwind mocks with the same sample content, so they
-compare fairly. Pick one; the next round redesigns the app in that direction. Nothing here touches the app.
+Round 1: five directions for the redesign, rendered as React + Tailwind mocks with the same sample content, so
+they compare fairly. Round 2 (below, [§6 Nocturne](#6-nocturne-round-2)): one refined direction that blends
+Messenger and Pulse, in two close variants. Pick one; the next round redesigns the app in that direction.
+Nothing here touches the app.
 
 - **Gallery**: open [`gallery.html`](gallery.html) for all screenshots side by side.
 - **Live mocks**: `bun run dev` in this folder (port 5199), then `#/<slug>/<screen>` or the index page.
 - **Re-render**: `bun shoot.ts [slug…]` writes `screenshots/<n>-<slug>-<screen>.png` with the repo's nix
-  chromium. Fonts: Inter, JetBrains Mono, Fraunces and Noto Color Emoji via a fontconfig file
+  chromium (round 2: `bun shoot.ts nocturne nocturne-b`). Fonts: Inter, JetBrains Mono, Fraunces and Noto Color Emoji via a fontconfig file
   (`VC_FONTCONFIG`, default `/tmp/vc-fonts/conf/fonts.conf`; `nix build nixpkgs#{inter,jetbrains-mono,fraunces,noto-fonts-color-emoji}`).
   The HTML also loads the same families from Google Fonts for viewing on a Mac.
 
@@ -156,3 +158,94 @@ costs nothing.
 
 If the user wants the app to feel like a product rather than a tool, **Pulse** is the bold alternative worth
 considering; **Messenger** is the right pick if the phone is the primary device after all.
+
+---
+
+## 6. Nocturne (round 2)
+
+**Idea.** Messenger's structure and calling model with Pulse's sidebar, in a restrained, dark-first language.
+The sidebar is Pulse's icon rail (64px: avatars with a presence ring, unread badges, a hover tooltip with name
+and status) that expands to a 272px list (name, status line in the presence colour or the last message when
+idle, time, unread pill, Memories / MCP / Settings and the signed-in user at the bottom). The DM keeps
+Messenger's shape: sticky header, bottom-anchored composer, the call as a floating card on desktop and a
+full-screen sheet on the phone. The visual language is deep neutral surfaces, 1px hairlines, one quiet accent,
+Inter, and glow only on live states (a needs-approval, in-call or error ring; a pulse on thinking/working).
+Nothing is a gradient.
+
+**The DM at 1440px.** Two renderings of the same turn model, so the user can pick:
+
+- **6 — bubbles, hybrid.** Short turns are bubbles (the user's in the soft accent on the right, the agent's on
+  the card surface with a hairline on the left, Dana's relay the same with a "relay to Robin" chip). A long
+  agent reply (more than one block, or any code) drops the bubble and becomes a full-width block under a name
+  line: prose at a 72ch measure, code full width on the panel surface. Consecutive tool calls fold into one
+  activity card ("Edited …", "Ran bun run check ✓ 48 tests pass") indented to the text column. The approval is
+  a 520px card with an amber hairline, the command on the base surface, a solid-accent Allow and a ghost
+  Deny, plus ⏎ / esc hints.
+- **6b — rows, no bubbles.** Every turn is a row with a name line (You / Robin / Dana), Slack-style, so long
+  and short replies read the same; the relay gets a 2px rule in Dana's colour. Same tool card and approval.
+
+**Calling.** Desktop: a 320px card floats top-right over the thread (elevation 3): avatar with the call ring
+(amber when waiting for approval), name, timer, state, the last two transcript lines, and — new in this round
+— the pending approval itself with Allow / Deny inside the card, so a voice session never needs the thread;
+mute, speaker, hide and hang up below. The header shows "● In a call · 04:12" and hides its Call button.
+Phone: the DM has a sticky header (back chevron, avatar with ring, name, state) and a compact call strip under
+it (state, timer, "Tap to open the call", mute, hang up); tapping it opens the full-screen call sheet: a
+faint radial tint in the agent's colour, 112px avatar with the glowing ring, name, state pill, transcript, the
+approval card, and the four 64px controls. The composer stays at the bottom with safe-area padding.
+
+**Tokens** (`6-nocturne/theme.css`; 6b overrides the surfaces and accent, `.light` swaps the set):
+
+| token                                                 | 6 (dark)                                                      | 6b (dark)                                                     | 6 light                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `--bg` / `--panel` / `--card` / `--muted`             | `#0e0f12` / `#121317` / `#17181d` / `#1f2026` (cool graphite) | `#121110` / `#161514` / `#1c1b19` / `#252321` (warm charcoal) | `#fbfbfc` / `#f3f3f6` / `#fff` / `#ebebf0`                        |
+| `--fg` / `--muted-fg`                                 | `#e9eaef` / `#878b98`                                         | `#ece8e1` / `#8f8a82`                                         | `#15161b` / `#6a6e7c`                                             |
+| `--line` / `--line-strong`                            | white 7% / 13%                                                | white 7% / 13%                                                | black 8% / 14%                                                    |
+| `--accent` / `--accent-fg` / `--accent-soft`          | `#8f97ff` / `#0b0c16` / accent 22% on card                    | `#ece8e1` (ivory) / `#141311` / `#2a2825`                     | `#5b64dc` / `#fff` / `#e8eaff`                                    |
+| presence: thinking / working / waiting / call / error | `#6ea8fe` / `#45c98a` / `#f0b24a` / `#45c98a` / `#f26d66`     | same                                                          | darker: `#2f6fdb` / `#1f9d63` / `#c7811a` / `#1f9d63` / `#d9433b` |
+
+- **Type**: Inter; desktop body 14.5px / 1.55, phone body 16px; name 13px semibold; meta 11.5–12px; section
+  labels 11px uppercase, 0.08em tracking; mono (JetBrains Mono) 12.5px desktop, 11.5px phone; display 28px on
+  the phone (call sheet name, list title). Tabular numerals for times.
+- **Radii**: 5 (kbd), 8 (code inside cards), 10 (inputs, buttons, chips), 12 (tool card, code block), 14
+  (approval, call strip), 16 (composer, palette), 18 (bubbles, 6px on the tail corner), 20 (call card), full
+  (avatars, pills).
+- **Elevation**: 0 = `--bg` (thread), 1 = `--panel` (sidebar, code), 2 = `--card` + 1px `--line` (bubbles,
+  tool card, approval, composer), 3 = `--card` + `--line-strong` + `--elev` (an inset 1px top highlight, a
+  20/50px shadow and a 2/8px shadow: call card, palette, tooltip). Light mode uses the same levels with a
+  softer shadow.
+- **Presence ring**: 2px ring, 4px outside the avatar, with a 2px gap in the surface colour; glow
+  (`0 0 14px` at 45%) only on needs-approval, in-call and error; thinking/working pulse at 1.6s; idle has no
+  ring.
+- **Motion**: 160ms ease-out for hover/press; sidebar collapse/expand 220ms (width, labels fade in after
+  80ms); call card appears with a 240ms scale-from-0.96 + fade and slides into the header strip on the
+  phone; the call sheet is a bottom sheet (320ms spring); the streaming caret blinks at 1s; all of it off
+  under `prefers-reduced-motion`.
+
+**6 vs 6b.** Same components and content; two axes differ, and they can be recombined in round 3:
+
+|               | 6                                                                  | 6b                                                              |
+| ------------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
+| surfaces      | cool graphite (blue-black)                                         | warm charcoal                                                   |
+| accent        | quiet indigo `#8f97ff` on primary buttons, user bubbles, badges    | ivory (monochrome): white-ish buttons and badges, no hue at all |
+| desktop turns | hybrid: bubbles for short turns, full-width blocks for long output | rows with a name line, no bubbles anywhere                      |
+| feel          | a messenger that knows how to show code                            | a workspace that happens to be a chat                           |
+
+**Sidebar behaviour.** The rail is the default on desktop; ⌘\ (and the panel icon at the bottom of the rail /
+top of the list) toggles it, and the choice is remembered. Collapsed: 36px avatars in a 48px hit area, the
+active one on a `--muted` tile with a 3px bar at the window edge; unread count as a badge on the avatar; hover
+(or focus) shows a tooltip with name, status and unread. Expanded: the same order, plus name, status line,
+time and badge; the bottom rows (Memories, MCP servers, Settings) and the user row gain labels. On the phone
+there is no sidebar: the agent list is its own screen with a tab bar (Agents, Memories, Tools, Settings) and
+DMs push over it.
+
+**Trade-offs.** The call card covers ~320×350px of the thread on a laptop, so it needs a "hide" control (it
+has one) and should remember its corner. The hybrid rule in 6 (bubble vs. block) must be deterministic and
+explained once, or it looks random: "one paragraph and nothing else = bubble". 6b's ivory accent means
+"primary" and "selected" are both near-white, which is sleek but gives up colour as a signal for the one
+button you must press. Both keep the amber approval ring as the only strong colour in the thread on purpose.
+
+**Screens.** `screenshots/6-nocturne-desktop-dm.png` (rail collapsed, Dana tooltip),
+`6-nocturne-desktop-dm-expanded.png`, `6-nocturne-desktop-call.png` (floating call card with the approval),
+`6-nocturne-mobile-agents.png`, `6-nocturne-mobile-call.png` (sticky header + call strip),
+`6-nocturne-mobile-call-sheet.png`, `6-nocturne-desktop-dm-light.png`, `6-nocturne-palette.png` (⌘K); the same
+eight as `6b-nocturne-*.png`.
