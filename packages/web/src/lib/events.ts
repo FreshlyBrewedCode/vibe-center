@@ -14,6 +14,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type {
   AgentsResponse,
   CallsResponse,
+  DevicesResponse,
   HarnessesResponse,
   McpServersResponse,
   Message,
@@ -306,6 +307,19 @@ export function applyEvent(qc: QueryClient, e: ServerEvent, myDeviceId: string):
     case "device.revoked":
       if (e.deviceId === myDeviceId) qc.setQueryData(keys.me, null);
       else void qc.invalidateQueries({ queryKey: keys.devices });
+      return;
+    case "device.upsert":
+      // Broadcast: `current` is relative to whichever device published it, not us. Keep ours.
+      qc.setQueryData<DevicesResponse>(keys.devices, (list) =>
+        list
+          ? list.some((d) => d.id === e.device.id)
+            ? list.map((d) => (d.id === e.device.id ? { ...e.device, current: d.current } : d))
+            : [...list, e.device]
+          : list,
+      );
+      return;
+    case "device.link.paired":
+      // No cache to patch here: the Add device dialog picks this up via `subscribe()`.
       return;
     default:
       return;

@@ -12,6 +12,7 @@ import {
   type Call,
   type CallsResponse,
   type ConversationResponse,
+  type DeviceResponse,
   type DevicesResponse,
   type GpuSpeechAction,
   type Harness,
@@ -30,6 +31,7 @@ import {
   type MeResponse,
   type MessageSearchHit,
   type MessagesResponse,
+  type MintLinkResponse,
   mcpPaths,
   paths,
   type SendMessageResponse,
@@ -235,6 +237,29 @@ export function useRevokeDevice() {
   return useMutation({
     mutationFn: (id: string) => api.delete(paths.device(id)),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.devices }),
+  });
+}
+
+export function useRenameDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.patch<DeviceResponse>(paths.device(id), { name }),
+    onSuccess: (device) =>
+      qc.setQueryData<DevicesResponse>(keys.devices, (l) => l?.map((d) => (d.id === device.id ? device : d))),
+  });
+}
+
+/** Mints a fresh sign-in link from this device (Settings → Devices → Add device). */
+export function useMintLink() {
+  return useMutation({
+    mutationFn: (label: string | undefined) => api.post<MintLinkResponse>(paths.deviceLinks, { label }),
+  });
+}
+
+export function useCancelLink() {
+  return useMutation({
+    mutationFn: (id: string) => api.delete(paths.deviceLink(id)),
   });
 }
 
