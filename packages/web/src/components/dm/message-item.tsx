@@ -269,7 +269,6 @@ function Pre({ label, value }: { label: string; value: unknown }) {
 }
 
 function PermissionCard({ message: m }: { message: Extract<Message, { kind: "permission" }> }) {
-  const answer = useAnswerPermission();
   const d = m.data;
   const chosen =
     d.outcome && d.outcome !== "cancelled"
@@ -286,29 +285,37 @@ function PermissionCard({ message: m }: { message: Extract<Message, { kind: "per
       </div>
       {d.rawInput !== undefined && <Pre label="Request" value={d.rawInput} />}
       {m.status === "pending" ? (
-        <div className="flex flex-wrap gap-2">
-          {d.options.map((o) => (
-            <Button
-              key={o.optionId}
-              size="sm"
-              variant={o.kind.startsWith("allow") ? "default" : "outline"}
-              disabled={answer.isPending}
-              onClick={() =>
-                answer.mutate(
-                  { messageId: m.id, optionId: o.optionId },
-                  { onError: (e) => toast.error(e.message) },
-                )
-              }
-            >
-              {o.name}
-            </Button>
-          ))}
-        </div>
+        <PermissionButtons message={m} />
       ) : (
         <p className="text-muted-foreground text-xs">
           {chosen ? `Answered: ${chosen.name}` : "No longer needed (the turn ended)"}
         </p>
       )}
+    </div>
+  );
+}
+
+/** The answer buttons of a pending permission request (in the DM and in the call bar). */
+export function PermissionButtons({ message: m }: { message: Extract<Message, { kind: "permission" }> }) {
+  const answer = useAnswerPermission();
+  return (
+    <div className="flex flex-wrap gap-2">
+      {m.data.options.map((o) => (
+        <Button
+          key={o.optionId}
+          size="sm"
+          variant={o.kind.startsWith("allow") ? "default" : "outline"}
+          disabled={answer.isPending}
+          onClick={() =>
+            answer.mutate(
+              { messageId: m.id, optionId: o.optionId },
+              { onError: (e) => toast.error(e.message) },
+            )
+          }
+        >
+          {o.name}
+        </Button>
+      ))}
     </div>
   );
 }

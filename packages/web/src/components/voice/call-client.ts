@@ -2,18 +2,22 @@
 // Signalling goes through the app (`/api/voice/calls`, cookie-authenticated, same origin); only
 // the media flows directly to the worker's host. This is client-side media state, so it lives
 // in a small module store (useSyncExternalStore), not in TanStack Query. The server's view of
-// the call (state, timer start, latency) is `useCalls()`.
+// the call (state, timer start, latency, muted) is `useCalls()`, and it is the source of truth
+// for the controls: hang-up and mute go through the server from any tab or device, and the tab
+// holding the media follows the server's call (mutes its mic, releases it when the call ended).
 
-import { type Call, type StartCallResponse, voicePaths } from "@vibe-center/shared";
+import { hashKey } from "@tanstack/react-query";
+import type { Call, CallsResponse, StartCallResponse } from "@vibe-center/shared";
+import { voicePaths } from "@vibe-center/shared";
 import { useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { subscribe as subscribeEvents } from "@/lib/events";
+import { endCall, keys, queryClient, setCallMuted } from "@/lib/queries";
 
 export interface LocalCall {
   agentId: string;
   callId: string | null;
   phase: "starting" | "connecting" | "connected" | "ended";
-  muted: boolean;
   error: string | null;
 }
 
@@ -51,14 +55,34 @@ subscribeEvents((e) => {
   }
 });
 
+// Follow the server's call wherever the cache learns about it (events, a resync after the
+// channel was down, another tab's or device's mute): mute the mic to match, and let go of the
+// media once a call that was up is gone from the server's list.
+const callsHash = hashKey(keys.calls);
+queryClient.getQueryCache().subscribe((e) => {
+  if (e.type !== "updated" || e.query.queryHash !== callsHash || !local?.callId || !media) return;
+  const calls = e.query.state.data as CallsResponse | undefined;
+  if (!calls) return;
+  const call = calls.find((c) => c.id === local?.callId);
+  if (call) applyMute(call.muted);
+  else if (local.phase === "connected") {
+    release();
+    set({ ...local, phase: "ended" });
+  }
+});
+
+function applyMute(muted: boolean) {
+  for (const t of media?.mic.getAudioTracks() ?? []) t.enabled = !muted;
+}
+
 function endError(call: Call): string | null {
   return call.endReason && call.endReason !== "hung up" ? call.endReason : null;
 }
 
 /** Start a call with an agent (ends a call this tab already has). Throws with a readable message. */
 export async function startCall(agentId: string): Promise<void> {
-  if (local && local.phase !== "ended") await hangUp();
-  set({ agentId, callId: null, phase: "starting", muted: false, error: null });
+  if (local && local.phase !== "ended") await hangUp().catch(() => {});
+  set({ agentId, callId: null, phase: "starting", error: null });
   try {
     const mic = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -84,7 +108,8 @@ export async function startCall(agentId: string): Promise<void> {
     pc.onconnectionstatechange = () => {
       if (!local || !media || media.pc !== pc) return;
       if (pc.connectionState === "connected") set({ ...local, phase: "connected" });
-      if (pc.connectionState === "failed") void hangUp("The audio connection to the voice worker failed.");
+      if (pc.connectionState === "failed")
+        void hangUp(local.callId, "The audio connection to the voice worker failed.").catch(() => {});
     };
     // candidates found after the (non-trickle) offer went out are sent as ICE patches
     let pcId: string | null = null;
@@ -116,7 +141,7 @@ export async function startCall(agentId: string): Promise<void> {
     if (late.length) void sendCandidates(pcId, late.splice(0));
   } catch (e) {
     release();
-    set({ agentId, callId: null, phase: "ended", muted: false, error: (e as Error).message });
+    set({ agentId, callId: null, phase: "ended", error: (e as Error).message });
     throw e;
   }
 
@@ -136,25 +161,29 @@ export async function startCall(agentId: string): Promise<void> {
   }
 }
 
-/** Hang up this tab's call (and tell the server). */
-export async function hangUp(error: string | null = null): Promise<void> {
-  const callId = local?.callId ?? null;
-  const agentId = local?.agentId;
-  release();
-  if (agentId) set({ agentId, callId, muted: false, phase: "ended", error });
-  if (callId) await api.delete(voicePaths.call(callId)).catch(() => {});
+/**
+ * Hang up a call from any tab or device: the server ends it (and the worker, and the media in
+ * whichever tab holds it). Without `callId`, this tab's own call, also while it is still being
+ * set up. Throws when the server couldn't be reached; this tab's media is released either way.
+ */
+export async function hangUp(callId: string | null = local?.callId ?? null, error: string | null = null) {
+  if (local && (local.callId === callId || callId === null)) {
+    release();
+    set({ ...local, phase: "ended", error });
+  }
+  if (callId) await endCall(callId);
 }
 
-/** Hang up a call held by another device (the server ends it there too). */
-export async function hangUpRemote(callId: string): Promise<void> {
-  await api.delete(voicePaths.call(callId));
-}
-
-export function toggleMute(): void {
-  if (!local || !media) return;
-  const muted = !local.muted;
-  for (const t of media.mic.getAudioTracks()) t.enabled = !muted;
-  set({ ...local, muted });
+/** Mute or unmute a call from any tab or device (the worker hears silence while muted). */
+export async function setMuted(callId: string, muted: boolean): Promise<void> {
+  const holds = local?.callId === callId;
+  if (holds) applyMute(muted); // at once here; the server confirms
+  try {
+    await setCallMuted(callId, muted);
+  } catch (e) {
+    if (holds) applyMute(!muted);
+    throw e;
+  }
 }
 
 function release() {

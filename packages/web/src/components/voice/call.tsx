@@ -1,17 +1,34 @@
 import { useNavigate } from "@tanstack/react-router";
 import type { AgentView, Call, CallState, Message } from "@vibe-center/shared";
-import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, ShieldQuestion } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCalls, useMe, useMessages, useVoiceStatus } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { hangUp, hangUpRemote, startCall, toggleMute, useLocalCall } from "./call-client";
+import { PermissionButtons } from "../dm/message-item";
+import { hangUp, setMuted, startCall, useLocalCall } from "./call-client";
 
 /** The active call with this agent, if any (on any device). */
 function useAgentCall(agentId: string): Call | null {
   return useCalls().data?.find((c) => c.agentId === agentId) ?? null;
+}
+
+type PermissionMessage = Extract<Message, { kind: "permission" }>;
+
+/** The agent's latest unanswered permission request, if any (a call can't approve by voice). */
+export function usePendingPermission(conversationId: string | undefined): PermissionMessage | null {
+  const messages = useMessages(conversationId ?? "", { enabled: !!conversationId }).data?.messages;
+  return (
+    (messages?.findLast((m) => m.kind === "permission" && m.status === "pending") as PermissionMessage) ??
+    null
+  );
+}
+
+/** Hang-up and mute go through the server; say so when it couldn't be reached. */
+export function reportFailure(what: string) {
+  return (e: Error) => toast.error(`Couldn't ${what}: ${e.message}`);
 }
 
 /** DM header button: starts a call with the agent. Hidden while a call with it runs. */
@@ -73,11 +90,16 @@ export const stateDot: Record<CallState, string> = {
   ended: "bg-presence-idle",
 };
 
-/** Under the DM header while a call with this agent runs: state, timer, mute, hang up, transcript. */
+/**
+ * Under the DM header while a call with this agent runs: state, timer, mute, hang up, a pending
+ * permission request (the agent can't be approved by voice), transcript. The controls work from
+ * any tab or device through the server; only the tab that started the call holds the audio.
+ */
 export function CallBar({ agent }: { agent: AgentView }) {
   const call = useAgentCall(agent.id);
   const local = useLocalCall();
   const me = useMe();
+  const permission = usePendingPermission(call ? agent.conversationId : undefined);
   const mine = local?.agentId === agent.id ? local : null;
   const starting = mine && (mine.phase === "starting" || mine.phase === "connecting");
 
@@ -86,18 +108,17 @@ export function CallBar({ agent }: { agent: AgentView }) {
   }, [mine?.phase, mine?.error]);
 
   if (!call && !starting) return null;
+  // The RTCPeerConnection lives only in the tab that started the call (a reload loses it). Any
+  // other tab, on this device or another, shows the call and controls it through the server.
+  const holdsAudio = !call || local?.callId === call.id;
   const here = !call || call.deviceId === me.data?.id;
-  // Mic/mute and hang-up need the actual RTCPeerConnection, which lives only in the tab that
-  // started the call (`local` is in-memory, per tab): `here` alone isn't enough, since the same
-  // device's cookie is shared by every tab. A tab without it still ends the call (`hangUpRemote`).
-  const holdsSession = !call || local?.callId === call.id;
   const state: CallState = call?.state ?? "connecting";
   return (
     <div data-testid="call-bar" className="shrink-0 border-b bg-muted/40 px-4 py-2">
       <div className="flex items-center gap-3">
         <span className={cn("size-2.5 shrink-0 rounded-full", stateDot[state])} />
         <span data-testid="call-state" className="font-medium text-sm">
-          {here ? stateLabel[state] : "In a call on another device"}
+          {stateLabel[state]}
         </span>
         {call && <Timer since={call.startedAt} />}
         {call?.lastTurn?.ms.first_audio_out !== undefined && (
@@ -114,29 +135,66 @@ export function CallBar({ agent }: { agent: AgentView }) {
           </span>
         )}
         <span className="flex-1" />
-        {holdsSession && mine && (
+        {call && (
           <Button
             variant="ghost"
             size="icon"
             data-testid="call-mute"
-            aria-pressed={mine.muted}
-            aria-label={mine.muted ? "Unmute" : "Mute"}
-            onClick={toggleMute}
+            aria-pressed={call.muted}
+            aria-label={call.muted ? "Unmute" : "Mute"}
+            onClick={() => setMuted(call.id, !call.muted).catch(reportFailure("mute the call"))}
           >
-            {mine.muted ? <MicOff className="size-4 text-destructive" /> : <Mic className="size-4" />}
+            {call.muted ? <MicOff className="size-4 text-destructive" /> : <Mic className="size-4" />}
           </Button>
         )}
         <Button
           variant="destructive"
           size="sm"
           data-testid="call-hangup"
-          onClick={() => (holdsSession ? hangUp() : hangUpRemote(call.id)).catch(() => {})}
+          onClick={() => hangUp(call?.id ?? null).catch(reportFailure("hang up"))}
         >
           <PhoneOff className="size-4" />
-          Hang up
+          <span className="max-sm:sr-only">Hang up</span>
         </Button>
       </div>
-      {call && <LiveTranscript agent={agent} since={call.startedAt} />}
+      {!holdsAudio && call && (
+        <div
+          data-testid="call-elsewhere"
+          className="mt-1 flex items-center gap-2 text-muted-foreground text-xs"
+        >
+          <span className="flex-1">
+            {here
+              ? "The audio isn't in this tab (another tab, or this one was reloaded)."
+              : "The audio is on another device."}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => startCall(agent.id).catch(reportFailure("move the call here"))}
+          >
+            Move audio here
+          </Button>
+        </div>
+      )}
+      {permission ? (
+        <div
+          data-testid="call-permission"
+          className="mt-2 space-y-1.5 rounded-md border border-presence-waiting/50 bg-presence-waiting/10 px-2 py-1.5 text-sm"
+        >
+          <div className="flex items-center gap-2">
+            <ShieldQuestion className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1 truncate">
+              {agent.name} needs your approval: <span className="font-medium">{permission.data.title}</span>
+            </span>
+          </div>
+          <PermissionButtons message={permission} />
+        </div>
+      ) : call?.waiting?.reason === "busy" ? (
+        <p className="mt-1 text-muted-foreground text-xs">{agent.name} is finishing other work first.</p>
+      ) : (
+        call && <LiveTranscript agent={agent} since={call.startedAt} />
+      )}
     </div>
   );
 }

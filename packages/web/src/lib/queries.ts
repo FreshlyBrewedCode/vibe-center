@@ -9,6 +9,7 @@ import {
   type AgentToolsPatchBody,
   type AgentToolsResponse,
   type AgentView,
+  type Call,
   type CallsResponse,
   type ConversationResponse,
   type DevicesResponse,
@@ -103,10 +104,11 @@ export const useConversation = (id: string) =>
     queryFn: () => api.get<ConversationResponse>(paths.conversation(id)),
   });
 
-export const useMessages = (conversationId: string) =>
+export const useMessages = (conversationId: string, opts: { enabled?: boolean } = {}) =>
   useQuery({
     queryKey: keys.messages(conversationId),
     queryFn: () => api.get<MessagesResponse>(paths.messages(conversationId)),
+    enabled: opts.enabled,
   });
 
 export const useInfo = () =>
@@ -375,3 +377,21 @@ export const useVoices = (enabled = true) =>
 /** Active calls (all devices). `call.upsert` events keep the list current. */
 export const useCalls = () =>
   useQuery({ queryKey: keys.calls, queryFn: () => api.get<CallsResponse>(voicePaths.calls) });
+
+/**
+ * Call controls work from any tab or device, through the server (the tab holding the media
+ * follows, see call-client.ts). The response updates the cache at once, so the UI doesn't depend
+ * on the event channel to show that a hang-up or mute worked.
+ */
+export async function endCall(callId: string): Promise<void> {
+  await api.delete(voicePaths.call(callId));
+  queryClient.setQueryData<CallsResponse>(keys.calls, (list) => list?.filter((c) => c.id !== callId));
+}
+
+export async function setCallMuted(callId: string, muted: boolean): Promise<Call> {
+  const call = await api.patch<Call>(voicePaths.call(callId), { muted });
+  queryClient.setQueryData<CallsResponse>(keys.calls, (list) =>
+    list?.map((c) => (c.id === call.id ? call : c)),
+  );
+  return call;
+}

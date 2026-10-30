@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { useAgent, useCalls, useMe } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "../agent-avatar";
-import { stateDot, stateLabel } from "./call";
-import { hangUp, hangUpRemote, useLocalCall } from "./call-client";
+import { reportFailure, stateDot, stateLabel, usePendingPermission } from "./call";
+import { hangUp, useLocalCall } from "./call-client";
 
 /**
  * A call keeps running when you leave its DM (one call at a time, see ARCHITECTURE's "known
@@ -27,11 +27,17 @@ export function GlobalCallIndicator({
   const me = useMe();
   const local = useLocalCall();
   const agent = useAgent(call?.agentId ?? "");
-  if (!call || !agent || call.agentId === exceptAgentId) return null;
-  const here = call.deviceId === me.data?.id;
-  // The RTCPeerConnection lives only in the tab that started the call; every other tab (even on
-  // the same device, which shares the cookie) must end it through the server instead.
-  const holdsSession = local?.callId === call.id;
+  const shown = !!call && !!agent && call.agentId !== exceptAgentId;
+  const permission = usePendingPermission(shown ? agent.conversationId : undefined);
+  if (!shown) return null;
+  // The audio lives only in the tab that started the call; hang-up works from anywhere.
+  const status = permission
+    ? "Needs your approval"
+    : local?.callId === call.id
+      ? stateLabel[call.state]
+      : call.deviceId === me.data?.id
+        ? `${stateLabel[call.state]} · audio in another tab`
+        : "On another device";
   return (
     <div
       data-testid="global-call-indicator"
@@ -58,8 +64,13 @@ export function GlobalCallIndicator({
         </span>
         <span className={cn("min-w-0 flex-1", compact && "max-md:hidden")}>
           <span className="block truncate font-medium text-sm leading-tight">{agent.name}</span>
-          <span className="block truncate text-muted-foreground text-xs leading-tight">
-            {here ? stateLabel[call.state] : "On another device"}
+          <span
+            className={cn(
+              "block truncate text-xs leading-tight",
+              permission ? "font-medium text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {status}
           </span>
         </span>
       </Link>
@@ -68,7 +79,7 @@ export function GlobalCallIndicator({
         size="icon"
         className="size-7 shrink-0"
         aria-label="Hang up"
-        onClick={() => (holdsSession ? hangUp() : hangUpRemote(call.id)).catch(() => {})}
+        onClick={() => hangUp(call.id).catch(reportFailure("hang up"))}
       >
         <PhoneOff className="size-4 text-destructive" />
       </Button>
