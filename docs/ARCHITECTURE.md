@@ -15,6 +15,7 @@ vibe-center start  (one Bun process, binds 127.0.0.1:7880 only)
   ├─ WebSocket channel  /ws         typed ServerEvents to every device
   ├─ MCP gateway        /mcp        streamable HTTP, per-session bearer credential, loopback only
   ├─ SPA                /*          packages/web/dist  (dev: Vite on port+1 proxies /api,/ws)
+  │                                 incl. /oauth/mcp/callback, the MCP OAuth redirect page
   ├─ control socket     ~/.vibe-center/control.sock (0600)  ← `vibe-center link`
   ├─ SQLite             ~/.vibe-center/vibe-center.db  (WAL, FTS5)
   ├─ one harness process per active agent, ACP over stdio
@@ -87,8 +88,36 @@ e2e/                      Playwright
 per-session/per-call bearer tokens and refuse anything forwarded from outside.
 
 **Data at rest:** the data dir is forced to 0700 and the DB (with its WAL/SHM) to 0600 on every
-start, also when they already existed with looser modes. Secrets (MCP env and headers, custom
-harness env, the remote voice worker token) are write-only through the API.
+start, also when they already existed with looser modes. Secrets (MCP env and headers, MCP OAuth
+client secrets and tokens, custom harness env, the remote voice worker token) are write-only
+through the API.
+
+**MCP OAuth** (details in the MCP section):
+
+- **One connection per server, shared by every agent.** Whoever signs in, every agent with that
+  server's tools enabled acts as that account. Per-agent accounts would need one upstream
+  connection per agent; not in v1.
+- **Tokens never leave the server:** not in API responses (`McpOAuthView` has account, scopes,
+  expiry), not in events, not in logs or error messages; access and refresh tokens, the PKCE
+  verifier and a registered client's secret live in `mcp_oauth` (DB 0600) or in memory.
+- **CSRF and mix-up:** starting a sign-in is a same-origin POST with the device cookie. Its
+  `state` is 32 random bytes, kept hashed in memory, single use, 10 minutes, bound to the device
+  that started it; the redirect page posts it back with that device's cookie, and a callback from
+  another device (or a replay) is refused and burns the flow. The `iss` of the response must be
+  the recorded issuer (RFC 9207), else nothing of it is used. PKCE S256 always.
+- **Redirect URI:** `<origin>/oauth/mcp/callback`, where origin is the one the starting device
+  uses (its `Origin`, already checked against Host/X-Forwarded-Host): the tailnet URL through
+  `tailscale serve`, `http://localhost:<port>` locally. Exact match: a dynamically registered
+  client is bound to the URI it registered and re-registered if it changes. It is a page of the
+  SPA, not an /api route, because the SameSite=Strict cookie isn't sent on the cross-site
+  navigation back from the authorization server; the page posts `{state, code, iss}` same-origin.
+- **https only:** the authorization server, its metadata, authorize/token/registration/
+  revocation endpoints and the MCP URL must be https (http only on loopback, for tests);
+  redirects to http are refused. The metadata's `issuer` must equal the URL it was discovered
+  from (a lone trailing slash aside).
+- **No open redirect:** the page returns to `returnTo`, which must be a path of the app (`/…`,
+  not `//…`, `/\…` or a URL), validated when the sign-in starts. A desktop sign-in opens a new tab
+  with `opener` cleared.
 
 **Between agents (a v1 decision):** agents are not isolated from each other or from you.
 
@@ -145,7 +174,8 @@ probes, the managed voice worker and a GPU speech job (`speech.sh`). `procs.ts` 
 | `turns` | one prompt and its outcome: `source` (user/voice/agent/event), `from_agent_id`, status, stop reason, error |
 | `messages` | `seq` (global order) + `kind`: text, thought, tool_call, permission, plan, voice_transcript, session (divider), error; `data` JSON per kind (see `shared/src/domain.ts`) |
 | `messages_fts` | FTS5 over message text; streaming messages are indexed once they stop streaming |
-| `mcp_servers` | configured MCP servers: stdio (command/args/env/cwd) or http (url/headers), cached tool list and status; row `builtin` is the app's own server |
+| `mcp_servers` | configured MCP servers: stdio (command/args/env/cwd) or http (url/headers, `oauth` overrides: client id/secret, scopes), cached tool list and status; row `builtin` is the app's own server |
+| `mcp_oauth` | per HTTP server: discovered authorization server metadata, a dynamically registered client, the tokens (JSON, secret) |
 | `agent_tools` | per-agent tool enablement: `tool_name '*'` = the server switch, other rows = per-tool overrides |
 | `mcp_tool_calls` | every call the gateway served: agent, session, turn, server, tool, args, result, timing, and the tool_call message it was attached to |
 | `memories` (+ FTS5) | the memory tools' store; `agent_id NULL` = shared |
@@ -268,6 +298,54 @@ tool selection, memories for the UI, and the gateway.
   discovered tools are cached in `mcp_servers` and published as `mcp.server.upsert`. stdio servers
   get the MCP SDK's default env (HOME, PATH, USER, …) plus their configured env, not the app's
   whole environment. HTTP tries streamable HTTP, then the old HTTP+SSE transport.
+- **OAuth** (`oauth.ts`, `McpOAuth`): the client side of the MCP Authorization spec
+  (2026-07-28) for HTTP servers without their own `Authorization` header. Built from the MCP
+  SDK's primitives (`discoverOAuthProtectedResourceMetadata`, `buildDiscoveryUrls`,
+  `registerClient`, `startAuthorization`, `exchangeAuthorization`, `refreshAuthorization`,
+  `extractWWWAuthenticateParams`); the SDK's `auth()` orchestrator and `authProvider` aren't used,
+  because they start a browser flow from inside a request and refresh without coordination.
+  - **Detection:** the upstream transport's `fetch` is `McpOAuth.fetchFor`. A 401 with no usable
+    token sets the server's status to `needs_auth` ("Needs sign-in" with a Sign in button) and
+    fails with `NeedsSignInError`, whose text is what an agent gets as the tool error. Nothing is
+    registered anywhere until the user clicks Sign in.
+  - **Start** (`POST /api/mcp/servers/:id/oauth {returnTo, popup}`): an unauthenticated
+    `initialize` reads `WWW-Authenticate` (resource_metadata, scope); RFC 9728 resource metadata
+    (required; its `resource` must match the URL) names the authorization server; its RFC 8414 /
+    OIDC metadata comes from the spec's discovery URLs (path insertion first). Client: a
+    pre-registered id/secret from the server's settings, else a stored dynamic registration for
+    this issuer and redirect URI, else RFC 7591 registration (`token_endpoint_auth_method: none`,
+    `application_type` native for localhost, web otherwise), else an error that names the
+    redirect URI to register. Scopes: the settings' override, else the challenge's, else the
+    resource metadata's `scopes_supported`, plus a step-up challenge's scopes and
+    `offline_access` when the authorization server lists it. Returns the authorize URL (PKCE
+    S256, `resource`, `state`). Client ID metadata documents aren't offered: the authorization
+    server would have to fetch a document from the app, which a tailnet URL doesn't allow.
+  - **Browser:** desktop opens a new tab (inside the click, then pointed at the URL), whose
+    redirect page closes itself; a phone, or a blocked tab, redirects this tab and comes back to
+    `returnTo`. The page (`routes/oauth.mcp.callback.tsx`) drops the query from the address bar
+    and posts it to `POST /api/mcp/oauth/callback`.
+  - **Callback:** state, device, expiry and `iss` checks (see "Security and trust model"), code
+    exchange with the verifier and `resource`, tokens stored, the upstream reconnected: tools are
+    discovered and live sessions get `list_changed` as for any server.
+  - **Using tokens:** every request carries the bearer token. It is refreshed a minute before a
+    known expiry and after a 401, one refresh per server at a time (rotating refresh tokens would
+    otherwise kill each other); the request is retried once. `invalid_grant`/`invalid_client`
+    drop the tokens (and a dead dynamic client) and flip to `needs_auth`; other refresh errors are
+    transient (status error, tokens kept). A 403 `insufficient_scope` records the challenged
+    scopes for the next sign-in and flips to `needs_auth`.
+  - **Disconnect** (`DELETE /api/mcp/servers/:id/oauth`): RFC 7009 revocation of the refresh and
+    access tokens when the server has a revocation endpoint (best effort), tokens dropped, status
+    `needs_auth`. Deleting the server revokes too (up to 3 s). Changing its URL or client ID
+    forgets the connection.
+  - **UI:** Settings → MCP servers shows the badge, Sign in, or "Signed in as … · issuer",
+    scopes, expiry, Reconnect and Disconnect (`components/mcp/oauth.tsx`); the server dialog has
+    an "OAuth (advanced)" section for a client ID/secret and scopes, showing the redirect URI to
+    register. A failed gateway call whose server needs sign-in shows "needs sign-in" with "Fix in
+    Settings" in the DM.
+  - **Tests:** `test/fixtures/oauth-mcp-server.ts` is an MCP server with its own authorization
+    server (resource metadata, AS metadata with path insertion, registration, auto-approving
+    authorize, token with PKCE and refresh rotation, revocation, `iss`, `/test/*` controls);
+    `test/oauth.test.ts` and `e2e/mcp-oauth.spec.ts` use it.
 - **Secrets:** env values and headers are stored in SQLite (data dir 0700, DB 0600) and never
   returned: the API shows keys and, for values of 12+ chars, the last 4 (`SecretMap`). Writes send
   `{ keep: true }` to keep a stored value; keys left out are removed. Put secrets there, not in
@@ -460,7 +538,7 @@ description, schema, run })`; it appears in every agent's built-in group (on by 
 Settings. Gateway-served tool calls carry `data.gateway` on their tool_call message. Files:
 `packages/server/src/mcp/**`, `http/mcp-api.ts`, `db/repos/{mcp-servers,memories,message-search}.ts`,
 `shared/src/api-mcp.ts`, `shared/src/events/mcp.ts`; web `routes/_app/settings/mcp.tsx`,
-`routes/_app/memories.tsx`, `components/mcp/**`.
+`routes/_app/memories.tsx`, `routes/oauth.mcp.callback.tsx`, `components/mcp/**`.
 
 ### Phase 2b: voice calls (done, see "Voice calls" above)
 
@@ -526,7 +604,13 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
   queue.
 - MCP (phase 2a): upstream servers are shared by all agents (one process/connection per server),
   so stateful servers (a browser, a shell) share state between agents. Only tools are proxied
-  (no MCP resources, prompts, sampling or elicitation from upstream servers). OAuth for HTTP MCP
-  servers isn't supported; use a header token. Hop counts for agent messages live in memory.
+  (no MCP resources, prompts, sampling or elicitation from upstream servers). Hop counts for agent
+  messages live in memory.
+- MCP OAuth: one sign-in per server for all agents. Authorization servers that need a
+  pre-registered redirect URI (no dynamic registration) work only with a client registered by
+  hand for the exact URI shown in the server dialog, and that URI depends on the origin you sign
+  in from (tailnet vs. localhost). No client ID metadata documents (the app isn't reachable from
+  the internet), no `private_key_jwt` or client credentials grants. Open sign-ins live in memory
+  (a restart cancels them). Only the first of several `authorization_servers` is used.
 - A harness that runs a gateway tool without reporting it over ACP gets a card from the gateway
   1.5 s after the call; one that reports a call later than that shows two cards.

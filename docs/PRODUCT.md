@@ -45,7 +45,8 @@ remote.
   session per DM; "New session" starts fresh (a divider in the DM) while history stays
   searchable
 - **MCP server**: configured once in the app (stdio command or HTTP URL); its tools are
-  discovered and listed. Per agent, tools are enabled or disabled, **grouped by server**.
+  discovered and listed. An HTTP server that asks for the MCP standard OAuth shows "Needs
+  sign-in" and a Sign in button; one sign-in per server, shared by all agents. Per agent, tools are enabled or disabled, **grouped by server**.
   Built-in tools are on by default; a newly added server's tools are off until enabled for an
   agent; tools a server adds later follow its per-agent switch. Changes apply to running sessions
 - **Built-in tools**: the app's own MCP server, enabled per agent like any other:
