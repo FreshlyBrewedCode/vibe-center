@@ -184,14 +184,16 @@ export class ChatService {
     }
   }
 
-  /** End the active session and start a fresh one; history stays, a divider marks the boundary. */
+  /**
+   * End the active session and start a fresh one; history stays, a divider marks the boundary.
+   * The DB and the runtime switch together, before any await, so a message sent meanwhile is
+   * recorded in and runs in the new session (the old session's turns are cancelled).
+   */
   async newSession(conversationId: string): Promise<Session> {
     const conv = this.requireConversation(conversationId);
-    const rt = this.runtimes.get(conv.agentId);
-    await rt?.cancel();
     if (conv.activeSessionId) this.repos.conversations.endSession(conv.activeSessionId);
     const session = this.repos.conversations.createSession(conv.id, conv.agentId);
-    await rt?.newSession(session.id);
+    const switched = this.runtimes.get(conv.agentId)?.newSession(session.id);
     this.bus.publish({ type: "session.started", session });
     const marker = this.repos.messages.insert({
       conversationId: conv.id,
@@ -204,6 +206,7 @@ export class ChatService {
       data: { reason: "new" },
     });
     this.bus.publish({ type: "message.upsert", message: marker });
+    await switched;
     return session;
   }
 

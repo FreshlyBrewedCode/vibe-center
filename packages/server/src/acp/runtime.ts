@@ -109,6 +109,8 @@ interface ActiveTurn {
   abandon: (err: Error) => void;
   abandoned: Promise<never>;
   timers: ReturnType<typeof setTimeout>[];
+  /** Resolves once the turn has ended (turn.end emitted). */
+  ended: Promise<void>;
 }
 
 class TurnCancelled extends Error {}
@@ -233,14 +235,22 @@ export class AgentRuntime {
     if (this.current?.turnId === turnId) this.cancelTurn(this.current, "user");
   }
 
-  /** End the current ACP session; the next prompt starts a fresh one under `sessionKey`. */
+  /**
+   * End the current ACP session: what is queued or running belongs to it and is cancelled, and
+   * prompts from now on run in a fresh session under `sessionKey`. The switch happens at once
+   * (no await before it), so a prompt sent while the old turn stops lands in the new session.
+   * Resolves once the old turn has ended.
+   */
   async newSession(sessionKey: string): Promise<void> {
-    await this.cancel();
+    for (const q of this.queue.splice(0)) this.endQueued(q, "cancelled before it started");
+    const running = this.current;
+    if (running) this.cancelTurn(running, "user");
     const old = this.acpSessionId;
+    const proc = this.proc;
     this.sessionKey = sessionKey;
     this.acpSessionId = null;
     this.resumeTarget = null;
-    const proc = this.proc;
+    await running?.ended;
     if (old && proc?.alive && proc.init.agentCapabilities?.sessionCapabilities?.close) {
       void proc.agent.request("session/close", { sessionId: old }).catch(() => {});
     }
@@ -344,6 +354,7 @@ export class AgentRuntime {
       abandon = reject;
     });
     abandoned.catch(() => {});
+    let markEnded!: () => void;
     const turn: ActiveTurn = {
       turnId: input.turnId,
       sessionId: null,
@@ -355,6 +366,9 @@ export class AgentRuntime {
       abandon,
       abandoned,
       timers: [],
+      ended: new Promise((r) => {
+        markEnded = r;
+      }),
     };
     this.current = turn;
     this.lastError = null;
@@ -389,6 +403,7 @@ export class AgentRuntime {
     if (result.status === "error") this.lastError = result.error;
     this.emit({ type: "turn.end", turnId: turn.turnId, result });
     this.refreshPresence();
+    markEnded();
     return result;
   }
 

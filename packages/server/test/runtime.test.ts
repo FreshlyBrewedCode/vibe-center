@@ -244,6 +244,19 @@ describe("AgentRuntime against the fake ACP agent", () => {
     expect(readies.map((e) => (e as { sessionKey: string }).sessionKey)).toEqual(["s1", "s2"]);
   });
 
+  test("a prompt sent while New session stops the old turn runs in the new session", async () => {
+    const { rt, text } = makeRuntime();
+    await rt.prompt(textPrompt("t0", "one")).done;
+    const slow = rt.prompt(textPrompt("t1", "slow please"));
+    await Bun.sleep(300);
+    const switching = rt.newSession("s2");
+    const next = rt.prompt(textPrompt("t2", "history"));
+    await switching;
+    expect((await slow.done).status).toBe("cancelled");
+    expect((await next.done).status).toBe("complete");
+    expect(text("t2")).toContain("seen 1 prompts");
+  });
+
   test("a missing working directory fails the turn with a clear error", async () => {
     const { rt } = makeRuntime({
       agent: { agentId: "a1", cwd: "/nonexistent/dir", systemPrompt: "", model: null, stateDir: "/tmp/vc-x" },
