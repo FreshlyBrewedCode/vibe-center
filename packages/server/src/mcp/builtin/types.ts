@@ -2,7 +2,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpToolInfo } from "@vibe-center/shared";
 import { z } from "zod";
 import type { Repos } from "../../db/repos/index.ts";
-import type { ChatService } from "../../domain/chat.ts";
+import type { ChatService, PromptHandle } from "../../domain/chat.ts";
 import type { PresenceStore } from "../../domain/presence.ts";
 import type { EventBus } from "../../events/bus.ts";
 
@@ -19,6 +19,15 @@ export interface BuiltinDeps {
   bus: EventBus;
   chat: ChatService;
   presence: PresenceStore;
+  /**
+   * Phase 2b's hook: deliver an event into a running call with the agent (spoken when the line is
+   * quiet; `onPrompt` gets the turn once it is prompted). Returns false when there is no call.
+   */
+  speakEvent?: (
+    agentId: string,
+    text: string,
+    opts: { note?: string; fromAgentId?: string | null; onPrompt?: (handle: PromptHandle) => void },
+  ) => boolean;
 }
 
 /** An MCP `tools/call` result (built-in results are text only). */

@@ -13,11 +13,10 @@ import {
 } from "@vibe-center/shared";
 import type { Repos } from "../db/repos/index.ts";
 import type { McpServerFields, McpServerRecord } from "../db/repos/mcp-servers.ts";
-import type { ChatService } from "../domain/chat.ts";
 import { HttpError } from "../domain/errors.ts";
-import type { PresenceStore } from "../domain/presence.ts";
 import type { EventBus } from "../events/bus.ts";
 import { type BuiltinTool, builtinTools, toolInfo } from "./builtin/index.ts";
+import type { BuiltinDeps } from "./builtin/types.ts";
 import { ToolCatalog } from "./catalog.ts";
 import { McpGateway } from "./gateway.ts";
 import { CallRecorder } from "./recorder.ts";
@@ -33,7 +32,7 @@ export class McpService {
   private readonly upstreams: UpstreamPool;
   private readonly recorder: CallRecorder;
   private builtins: Map<string, BuiltinTool> | null = null;
-  private deps: { chat: ChatService; presence: PresenceStore } | null = null;
+  private deps: Omit<BuiltinDeps, "repos" | "bus"> | null = null;
   private readonly unsubscribe: () => void;
 
   constructor(
@@ -67,7 +66,7 @@ export class McpService {
   }
 
   /** The built-in tools need the chat service, which needs the gateway: wired after both exist. */
-  bind(deps: { chat: ChatService; presence: PresenceStore }): void {
+  bind(deps: Omit<BuiltinDeps, "repos" | "bus">): void {
     this.deps = deps;
   }
 

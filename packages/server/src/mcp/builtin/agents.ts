@@ -1,5 +1,6 @@
 import type { Agent } from "@vibe-center/shared";
 import { z } from "zod";
+import type { PromptHandle } from "../../domain/chat.ts";
 import { type BuiltinDeps, type BuiltinTool, json, ToolError, text, tool } from "./types.ts";
 
 /**
@@ -67,15 +68,15 @@ export class AgentMessenger {
   private deliver(from: Agent, to: Agent, original: string, reply: string, hop: number): void {
     if (!this.d.repos.agents.get(from.id)) return; // sender deleted meanwhile
     const quoted = original.length > 200 ? `${original.slice(0, 200)}…` : original;
-    try {
-      const handle = this.d.chat.prompt(from.id, {
-        text: reply,
-        source: "event",
-        fromAgentId: to.id,
-        note: `[Reply from the agent "${to.name}" to the message you sent with send_message_to_agent: "${quoted}". Continue with what you were doing for the user; tell them the outcome if it matters.]`,
-      });
+    const note = `[Reply from the agent "${to.name}" to the message you sent with send_message_to_agent: "${quoted}". Continue with what you were doing for the user; tell them the outcome if it matters.]`;
+    const track = (handle: PromptHandle) => {
       this.hops.set(handle.turnId, hop);
       void handle.done.finally(() => this.hops.delete(handle.turnId));
+    };
+    try {
+      // in a call with the sender: spoken there once nobody is talking (same turn otherwise)
+      if (this.d.speakEvent?.(from.id, reply, { note, fromAgentId: to.id, onPrompt: track })) return;
+      track(this.d.chat.prompt(from.id, { text: reply, source: "event", fromAgentId: to.id, note }));
     } catch (e) {
       console.error("could not deliver an agent reply", e);
     }

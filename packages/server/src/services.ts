@@ -53,8 +53,9 @@ export function createServices(opts: ServicesOptions): Services {
     timeouts: opts.timeouts,
   });
   const agents = new AgentService(repos, bus, presence, harnesses, chat);
-  mcp.bind({ chat, presence });
   const voice = new VoiceService({ repos, bus, chat, presence, dataDir: opts.dataDir }, opts.voice);
+  // agent replies to an agent in a call are spoken there (2a's messenger → 2b's event hook)
+  mcp.bind({ chat, presence, speakEvent: (agentId, text, o) => voice.speakEvent(agentId, text, o) });
   const services: Services = {
     dataDir: opts.dataDir,
     repos,

@@ -22,7 +22,7 @@ import type { ChatService } from "../domain/chat.ts";
 import { HttpError } from "../domain/errors.ts";
 import type { PresenceStore } from "../domain/presence.ts";
 import type { EventBus } from "../events/bus.ts";
-import { type BridgeSocketData, CallBridge } from "./bridge.ts";
+import { type BridgeSocketData, CallBridge, type SpokenEvent } from "./bridge.ts";
 import { publicSettings, type StoredVoiceSettings, VoiceSettingsStore } from "./settings.ts";
 import { ManagedWorker, WorkerClient, WorkerError, type WorkerHealth } from "./worker.ts";
 
@@ -407,11 +407,12 @@ export class VoiceService {
   /**
    * The hook for proactive events: if the user is in a call with this agent, the worker speaks
    * `text` (as an `event` turn in the agent's session) once nobody is talking and the agent is
-   * idle. Returns false when there's no connected call; then prompt the agent as usual.
+   * idle. Returns false when there's no connected call; then prompt the agent as usual. `opts`:
+   * a hidden note for the agent, the sending agent, and a callback with the turn once prompted.
    */
-  speakEvent(agentId: string, text: string): boolean {
+  speakEvent(agentId: string, text: string, opts: SpokenEvent = {}): boolean {
     for (const live of this.calls.values()) {
-      if (live.call.agentId === agentId && live.bridge.sendEvent(text)) return true;
+      if (live.call.agentId === agentId && live.bridge.sendEvent(text, opts)) return true;
     }
     return false;
   }

@@ -266,7 +266,13 @@ describe("a call through the bridge", () => {
 
   test("proactive events: the speakEvent hook, then an event turn", async () => {
     expect(app.services.voice.speakEvent("nobody", "x")).toBe(false);
-    expect(app.services.voice.speakEvent(agent.id, "the build finished")).toBe(true);
+    const prompted: string[] = [];
+    const sent = app.services.voice.speakEvent(agent.id, "the build finished", {
+      note: "[Reply from the agent Builder]",
+      fromAgentId: agent.id,
+      onPrompt: (h) => prompted.push(h.turnId),
+    });
+    expect(sent).toBe(true);
     await until(async () =>
       (await frames()).find((f) => f.type === "event" && f.text === "the build finished"),
     );
@@ -274,7 +280,12 @@ describe("a call through the bridge", () => {
     const { id } = await worker<{ id: string }>("/test/say", { text: "the build finished", kind: "event" });
     await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));
     const ms = await messages(agent);
-    expect(ms.at(-2)).toMatchObject({ kind: "text", text: "the build finished", data: { source: "event" } });
+    expect(ms.at(-2)).toMatchObject({
+      kind: "text",
+      text: "the build finished",
+      data: { source: "event", fromAgentId: agent.id },
+    });
+    expect(prompted).toEqual([ms.at(-2)!.turnId!]);
     expect(ms.at(-1)).toMatchObject({ kind: "voice_transcript", role: "agent" });
   });
 

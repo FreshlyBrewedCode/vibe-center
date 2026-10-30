@@ -301,8 +301,10 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
 - **Proactive events**: `services.voice.speakEvent(agentId, text): boolean`. With a connected
   call to that agent the worker speaks it once nobody talks and the agent is idle (600 ms), as
   an `event` turn in the same session, and it returns true; otherwise false, and the caller
-  prompts as usual (`chat.prompt(agentId, { source: "event", text })`). Phase 2a's agent replies
-  should go through it.
+  prompts as usual (`chat.prompt(agentId, { source: "event", text })`). Options carry a hidden
+  note, the sending agent and an `onPrompt(handle)` callback. Phase 2a's agent replies use it
+  (`AgentMessenger.deliver` via `BuiltinDeps.speakEvent`), so another agent's answer arriving
+  during a call is spoken; the hop limit still sees the turn.
 - **Settings** (`settings` row `voice`, `voice/settings.ts`): worker mode/URL/token (the token is
   write-only), app URL for a remote worker, STT/TTS URLs (default the km-pc tunnels
   `127.0.0.1:8401/8402`; empty = CPU only), filler. Per call, the worker uses a GPU server only if

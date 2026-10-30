@@ -1,7 +1,7 @@
 import type { CallState, CallTurnLatency, ServerEvent } from "@vibe-center/shared";
 import type { ServerWebSocket } from "bun";
 import type * as acp from "../acp/protocol.ts";
-import type { ChatService } from "../domain/chat.ts";
+import type { ChatService, PromptHandle } from "../domain/chat.ts";
 import type { EventBus } from "../events/bus.ts";
 
 /**
@@ -52,6 +52,13 @@ export function voiceNote(kind: "user" | "event", context?: string): string {
   return lines.join("\n");
 }
 
+/** Extra for a proactive event: hidden context for the agent, the sender, the turn once prompted. */
+export interface SpokenEvent {
+  note?: string;
+  fromAgentId?: string | null;
+  onPrompt?: (handle: PromptHandle) => void;
+}
+
 export interface CallBridgeHandlers {
   onState(state: CallState): void;
   onLatency(turn: CallTurnLatency): void;
@@ -67,6 +74,8 @@ interface OpenPrompt {
 export class CallBridge {
   private ws: ServerWebSocket<BridgeSocketData> | null = null;
   private prompts = new Map<string, OpenPrompt>();
+  /** Events handed to the worker, waiting for it to prompt them (it does, in order). */
+  private events: { text: string; opts: SpokenEvent }[] = [];
   private closed = false;
   private unsubscribe: () => void;
 
@@ -117,8 +126,9 @@ export class CallBridge {
   }
 
   /** Proactive event: the worker speaks it when the user and the agent are quiet. */
-  sendEvent(text: string): boolean {
+  sendEvent(text: string, opts: SpokenEvent = {}): boolean {
     if (!this.connected) return false;
+    this.events.push({ text: text.trim(), opts });
     this.send({ type: "event", text });
     return true;
   }
@@ -147,14 +157,20 @@ export class CallBridge {
     const kind = f.kind === "event" ? "event" : "user";
     const open: OpenPrompt = { turnId: null, usageSent: false, cancelled: false };
     this.prompts.set(f.id, open);
-    let handle: ReturnType<ChatService["prompt"]>;
+    let ev: SpokenEvent = {};
+    if (kind === "event") {
+      const i = this.events.findIndex((e) => e.text === f.text.trim());
+      ev = (i >= 0 ? this.events.splice(i, 1)[0]?.opts : undefined) ?? {};
+    }
+    let handle: PromptHandle;
     try {
       handle = this.chat.prompt(this.agentId, {
         text: f.text,
         source: kind === "event" ? "event" : "voice",
+        fromAgentId: ev.fromAgentId ?? null,
         display: kind === "event" ? "text" : "voice_transcript",
         replyKind: "voice_transcript",
-        note: voiceNote(kind, f.context),
+        note: [voiceNote(kind, f.context), ev.note].filter(Boolean).join("\n"),
         idleTimeoutMs: VOICE_IDLE_MS,
         onUpdate: (u) => this.forward(f.id, open, u),
       });
@@ -164,6 +180,7 @@ export class CallBridge {
       return;
     }
     open.turnId = handle.turnId;
+    ev.onPrompt?.(handle);
     this.send({ type: "started", id: f.id, turnId: handle.turnId });
     if (open.cancelled) this.chat.cancelTurn(this.agentId, handle.turnId);
     void handle.done.then(
