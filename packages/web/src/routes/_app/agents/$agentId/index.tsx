@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CallButton, CallTimer, CallUi, useAgentCall } from "@/components/voice/call";
+import { WaitingChip } from "@/components/watches";
 import { useIsMobile } from "@/lib/media";
 import {
   ensureMessageLoaded,
@@ -111,6 +112,7 @@ function Dm({ agent, jumpToSeq }: { agent: Agent; jumpToSeq?: number }) {
         )}
         <Composer
           conversationId={agent.conversationId}
+          above={<WaitingChip agentId={agent.id} onOpen={() => setDetailsOpen(true)} />}
           agentName={agent.name}
           harnessId={agent.harnessId}
           busy={busy}

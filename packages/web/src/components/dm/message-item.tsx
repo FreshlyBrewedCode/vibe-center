@@ -2,6 +2,7 @@ import type { AgentView, Message } from "@vibe-center/shared";
 import {
   AlertTriangle,
   AudioLines,
+  Bell,
   Brain,
   Check,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   FileSearch,
   FolderOpen,
   Globe,
+  Hourglass,
   ListChecks,
   Loader2,
   Plug,
@@ -194,9 +196,11 @@ function Row({
   // Prompts from another agent (send_message_to_agent) and replies delivered back from it.
   const meta = isUser && (m.kind === "text" || m.kind === "voice_transcript") ? m.data : null;
   const relay = meta?.fromAgentId && (meta.source === "agent" || meta.source === "event") ? meta : null;
+  // A fired background wait (timer, background call, webhook) the app prompted the agent with.
+  const fired = !relay && meta?.source === "event" && meta.watch ? meta.watch : null;
   const fromAgent = useAgent(relay?.fromAgentId ?? "");
   const relayColor = fromAgent?.avatar.color;
-  const name = relay ? (fromAgent?.name ?? "Another agent") : isUser ? "You" : agent.name;
+  const name = relay ? (fromAgent?.name ?? "Another agent") : fired ? "Event" : isUser ? "You" : agent.name;
   return (
     <div
       data-testid={`message-${m.role}`}
@@ -207,6 +211,10 @@ function Row({
           <div className="flex items-center gap-2.5">
             {fromAgent ? (
               <AgentAvatar avatar={fromAgent.avatar} size={28} />
+            ) : fired ? (
+              <span className="grid size-7 shrink-0 place-items-center rounded-full border border-line text-muted-foreground">
+                <Bell className="size-3.5" />
+              </span>
             ) : isUser ? (
               <UserAvatar size={28} />
             ) : (
@@ -224,6 +232,15 @@ function Row({
             {m.kind === "voice_transcript" && (
               <span className="inline-flex shrink-0 items-center gap-1 text-2xs text-muted-foreground">
                 <AudioLines className="size-3" /> Spoken
+              </span>
+            )}
+            {fired && (
+              <span
+                data-testid="fired-watch"
+                className="inline-flex min-w-0 items-center gap-1 truncate rounded-full border border-line px-2 py-px text-2xs text-muted-foreground"
+              >
+                <Hourglass className="size-3 shrink-0" />
+                <span className="truncate">{fired.label}</span>
               </span>
             )}
             {relay && (

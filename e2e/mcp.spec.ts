@@ -56,19 +56,19 @@ test("add an MCP server, enable its tools for an agent, call one through the gat
   await page.getByRole("button", { name: "Add server" }).click();
   const row = page.getByTestId("mcp-server-upstream");
   await expect(row.getByTestId("mcp-status")).toHaveText("Connected");
-  await expect(row).toContainText("5 tools");
+  await expect(row).toContainText("6 tools");
   await expect(row).toContainText("Secrets: SECRET_TOKEN");
   await expect(page.locator("body")).not.toContainText("e2e-secret-value");
 
   // The agent's Tools section: built-ins on, the new server off until enabled.
   await page.goto(`/agents/${agent.id}/edit`);
   const group = page.getByTestId("tool-group-upstream");
-  await expect(group).toContainText("0 of 5 on");
+  await expect(group).toContainText("0 of 6 on");
   await group.getByRole("switch", { name: "All upstream tools" }).click();
-  await expect(group).toContainText("5 of 5 on");
+  await expect(group).toContainText("6 of 6 on");
   await group.getByRole("button", { name: /upstream/ }).click();
   await group.getByRole("switch", { name: "upstream__env" }).click();
-  await expect(group).toContainText("4 of 5 on");
+  await expect(group).toContainText("5 of 6 on");
   await page.screenshot({ path: "test-results/agent-tools.png", fullPage: true });
 
   // In the DM: the agent sees exactly its enabled tools and calls one through the gateway.

@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowUp, RefreshCw, Square } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,12 +21,15 @@ export function Composer({
   harnessId,
   busy,
   harnessIssue,
+  above,
 }: {
   conversationId: string;
   agentName: string;
   harnessId: string;
   busy: boolean;
   harnessIssue?: { message: string; blocking: boolean } | null;
+  /** Shown above the input, e.g. what the agent is waiting on. */
+  above?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const send = useSendMessage(conversationId);
@@ -69,6 +72,7 @@ export function Composer({
             <FixInSettingsLink hint="settings:harnesses" />
           </div>
         )}
+        {above}
         <div
           className={cn(
             "elev-sm flex items-end gap-1.5 rounded-2xl border border-line-strong bg-card p-1.5 transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20 sm:p-2",

@@ -33,7 +33,8 @@ vibe-center start  (one Bun process, binds 127.0.0.1:7880 only)
 packages/shared/src/      types shared by server and web (no runtime deps but zod)
   domain.ts               Agent, Harness, Conversation, Session, Message (kinds), Device, Presence
   api.ts                  paths, zod request schemas, response types
-  events/{core,mcp,voice}.ts + index.ts   the ServerEvent union, one file per phase
+  events/{core,mcp,voice,watches}.ts + index.ts   the ServerEvent union, one file per phase
+  api-{mcp,voice,watches}.ts   per-phase paths, request schemas, response types
 packages/server/src/
   cli.ts                  `vibe-center start|link`
   server.ts               composition root: services + HTTP + WS + static; mount points
@@ -42,8 +43,8 @@ packages/server/src/
   control.ts, tailscale.ts
   procs.ts                process groups: stop with SIGKILL escalation, crash-orphan registry
   auth/auth.ts            link tokens, device sessions
-  http/                   api.ts (core routes), mcp-api.ts, middleware.ts, ws.ts, static.ts, origin.ts
-  domain/                 chat.ts, turns.ts, agents.ts, harnesses.ts, presence.ts, errors.ts
+  http/                   api.ts (core routes), mcp-api.ts, watch-api.ts, middleware.ts, ws.ts, static.ts, origin.ts
+  domain/                 chat.ts, turns.ts, agents.ts, harnesses.ts, presence.ts, watches.ts, errors.ts
   voice/                  service.ts (calls, health, settings), worker.ts (child process, client),
                           bridge.ts (the worker's WS → chat.prompt), http.ts (/api/voice), settings.ts
   acp/                    the harness layer (below); knows nothing about storage or HTTP
@@ -180,6 +181,7 @@ probes, the managed voice worker and a GPU speech job (`speech.sh`). `procs.ts` 
 | `mcp_tool_calls` | every call the gateway served: agent, session, turn, server, tool, args, result, timing, and the tool_call message it was attached to |
 | `memories` (+ FTS5) | the memory tools' store; `agent_id NULL` = shared |
 | `devices` | device sessions (hashed secret), last seen, revoked |
+| `watches` | background waits: agent, kind (`timer`/`tool`/`agent_reply`/`webhook`), label, the agent's note, status, per-kind spec, fire/expiry times, `repeat`, fire count, last outcome, a webhook's secret hash, chain depth |
 | `settings` | key → JSON: `voice` (worker mode/URL/token, STT/TTS URLs, filler), appearance, … |
 
 **Migrations** are `*.sql` files applied in name order and tracked by **name**, so parallel
@@ -387,6 +389,46 @@ tool selection, memories for the UI, and the gateway.
   turn (user prompt 0, each message +1, a delivered reply keeps the hop of what it answers) with
   `MAX_HOPS = 3`, so a ping-pong ends after a few rounds; at most 5 unanswered messages per sender.
 
+## Background waits (watches)
+
+An agent never has to block a turn waiting for something. It registers a **watch** with a note on
+why it cares; the app does the waiting and starts a new turn when it fires (`domain/watches.ts`,
+`WatchService`; tools in `mcp/builtin/watches.ts`; table `watches`).
+
+- **Kinds:** `watch_timer` (in N minutes or at a time), `call_in_background` (the app runs one of
+  the agent's upstream tools, e.g. T3's wait-for-thread, through the gateway with the same
+  selection check and call log, a timeout of up to 30 days (default 24 h), cancellable; Claude
+  Code's `mcp__vibe__` and OpenCode's `vibe_` prefixes are accepted), `watch_webhook` (a URL
+  `/hooks/w/<id>/<secret>`, POST/PUT, no cookie: the 24-byte secret is the credential, kept as
+  SHA-256; body up to 64 KB, 4 KB of it in the event; once, or `repeat` until it expires),
+  and `agent_reply`: `send_message_to_agent` registers one for the sender, and the reply comes
+  back through the same inbox (shown as "Reply from X"). `list_watches` / `cancel_watch` manage
+  them. The blocking way (calling the tool directly) still works.
+- **Delivery** (the per-agent inbox): a firing is stored on the row and queued for the agent.
+  Idle agent → `ChatService.prompt(source: "event")` at once. Busy agent (a turn running or
+  queued, including yours) → after its last turn ends, everything that fired meanwhile combined
+  into one prompt. In a call → handed to `voice.speakEvent`, which prompts once nobody is talking
+  and the agent is idle; it never talks over the user, and a barge-in works as for any turn. The
+  prompt text shows in the DM as an "Event" row (`TurnMeta.watch`: label, watch ids); a hidden note
+  carries the watch's label, id, age, the agent's note, and the event's age when it waited over a
+  minute, so the agent can judge whether it still matters.
+- **Durable, owned by the agent:** watches survive "New session" (the event starts the turn in
+  whatever session is active, the note gives the context). Timers and webhooks are re-armed on
+  start (overdue timers fire at once). A background call or an agent reply can't outlive the
+  process, so on start they fire as `failed` ("interrupted by a restart").
+- **Guardrails** (`WATCH_LIMITS`): 10 active watches per agent (replies excluded; the messenger
+  caps those at 5), a chain depth of 10 (a watch registered in a turn that a firing started is one
+  deeper; a user prompt resets it), 30 webhook firings per agent per hour (then 429), at most 30
+  days ahead, event text cut at 8000 chars. Unused watches with an expiry tell the agent when they
+  expire.
+- **UI:** "Waiting on …" chip above the composer (opens the details panel), the details panel's
+  "Waiting on" section (active with Cancel, then the recently ended), and the Event row in the DM
+  (`components/watches.tsx`). API: `GET /api/agents/:id/watches`, `DELETE /api/watches/:id`.
+- **Not yet:** events never interrupt the agent's own speech in a call (no "urgent" flag); webhooks
+  are reachable from the tailnet and this machine only, not from the public internet; MCP
+  notifications/resource subscriptions as an event source; a fired event isn't marked "reported,
+  interrupted" when a barge-in cuts it (the reply is marked interrupted like any voice reply).
+
 ## Live updates (`/ws`, `shared/src/events/`)
 
 One socket per tab; every event goes to every device (single user). The client sends only
@@ -422,6 +464,7 @@ and can lose the connection without a `close` event: the socket looks open but i
 | `memory.upsert` / `memory.deleted` | a memory changed (by an agent's tool or the UI) |
 | `call.upsert` | a call started, changed state (listening/thinking/speaking), reported a turn's latency, or ended |
 | `voice.status` | worker / STT / TTS health or the GPU speech job changed |
+| `watch.upsert` | a watch was registered, fired, cancelled, expired or failed |
 
 Adding events: put them in your phase's file (`events/mcp.ts`, `events/voice.ts`). Clients
 ignore unknown types, so new events never break older tabs. Server code publishes on the

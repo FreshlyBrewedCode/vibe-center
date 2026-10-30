@@ -24,7 +24,7 @@ import type {
 } from "@vibe-center/shared";
 import { paths } from "@vibe-center/shared";
 import { useEffect, useSyncExternalStore } from "react";
-import { keys } from "./queries";
+import { keys, upsertWatch } from "./queries";
 
 type Listener = (e: ServerEvent) => void;
 export type ConnectionState = "connecting" | "open" | "closed";
@@ -303,6 +303,9 @@ export function applyEvent(qc: QueryClient, e: ServerEvent, myDeviceId: string):
       return;
     case "voice.status":
       qc.setQueryData(keys.voiceStatus, e.status);
+      return;
+    case "watch.upsert":
+      upsertWatch(qc, e.watch);
       return;
     case "device.revoked":
       if (e.deviceId === myDeviceId) qc.setQueryData(keys.me, null);

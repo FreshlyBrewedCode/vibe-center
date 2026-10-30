@@ -14,6 +14,7 @@ import { AgentAvatar, presenceLabel, presenceTextClass } from "./agent-avatar";
 import { HealthBadge } from "./health-badge";
 import { Button } from "./ui/button";
 import { usePreviewVoice, voiceName } from "./voice/voice-picker";
+import { WatchList } from "./watches";
 
 /**
  * The on-demand details panel for a DM: agent info, current session, model/harness, tools,
@@ -53,6 +54,10 @@ export function DetailsPanel({ agent, onClose }: { agent: AgentView; onClose: ()
           </div>
         </div>
         {agent.description && <p className="text-muted-foreground text-sm">{agent.description}</p>}
+
+        <Section title="Waiting on">
+          <WatchList agentId={agent.id} />
+        </Section>
 
         <Section title="Harness & model">
           <Row label="Harness" value={harness?.name ?? agent.harnessId} />

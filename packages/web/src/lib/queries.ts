@@ -48,6 +48,9 @@ import {
   type VoiceStatus,
   type VoicesResponse,
   voicePaths,
+  type Watch,
+  type WatchesResponse,
+  watchPaths,
 } from "@vibe-center/shared";
 import { ApiError, api } from "./api";
 
@@ -80,6 +83,7 @@ export const keys = {
   calls: ["voice", "calls"] as const,
   sttModels: ["voice", "stt-models"] as const,
   recordings: ["voice", "recordings"] as const,
+  watches: (agentId: string) => ["watches", agentId] as const,
 };
 
 /** The signed-in device, or null when signed out (401). */
@@ -512,4 +516,34 @@ export async function setCallMuted(callId: string, muted: boolean): Promise<Call
     list?.map((c) => (c.id === call.id ? call : c)),
   );
   return call;
+}
+
+// ---- background waits (watches) -----------------------------------------------------------------
+
+export const useWatches = (agentId: string) =>
+  useQuery({
+    queryKey: keys.watches(agentId),
+    queryFn: () => api.get<WatchesResponse>(watchPaths.agentWatches(agentId)),
+  });
+
+/** Put a changed watch into its agent's list: active ones oldest first, then the recently ended. */
+export function upsertWatch(qc: QueryClient, w: Watch): void {
+  qc.setQueryData<WatchesResponse>(keys.watches(w.agentId), (list) => {
+    if (!list) return list;
+    const all = [...list.filter((x) => x.id !== w.id), w];
+    const active = all.filter((x) => x.status === "active").sort((a, b) => a.createdAt - b.createdAt);
+    const ended = all
+      .filter((x) => x.status !== "active")
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 10);
+    return [...active, ...ended];
+  });
+}
+
+export function useCancelWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<Watch>(watchPaths.watch(id)),
+    onSuccess: (w) => upsertWatch(qc, w),
+  });
 }
