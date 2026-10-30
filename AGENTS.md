@@ -57,8 +57,12 @@ material from before v1; don't build on their code paths, port what you need.
   per-harness quirks in `acp/adapters/`. `acp/` never touches the DB or HTTP.
 - Migrations: new `*.sql` file named `<YYYYMMDDHHmm>_<phase>_<what>.sql`; never edit applied ones.
 - Web: server state only via TanStack Query (`lib/queries.ts`), live updates only via
-  `lib/events.ts`, colours only via theme tokens. Add shadcn components with
-  `bunx shadcn@4.23.0 add <name>` in `packages/web`.
+  `lib/events.ts`, colours only via theme tokens (`index.css`; the design is "Nocturne Ash",
+  design/explorations/README.md §6b: dark first, one ivory accent, colour only for presence and
+  approvals). Add shadcn components with `bunx shadcn@4.23.0 add <name>` in `packages/web`, then
+  restyle them to the tokens like the ones in `components/ui/`. Screens that differ between
+  desktop and phone (not just hide) switch on `useIsMobile()`. `bun scripts/screenshots.ts`
+  renders every screen to `docs/screenshots/` for a visual check.
 - Tests: light and purposeful. ACP behaviour against `packages/server/test/fake-agent.ts` (add a
   keyword there for new scenarios); HTTP/WS flows in `test/server.test.ts`; one e2e per main flow.
 - Generated `packages/web/src/routeTree.gen.ts` is committed. On merge conflicts, take either
@@ -77,11 +81,13 @@ its own slot:
 
 - **Sidebar/command palette/notifications are generic**, not per-agent — no seam needed there
   unless you're adding a new kind of global action (the ⌘K palette in
-  `components/command-palette.tsx` is a plain list of `CommandItem`s to extend if useful, e.g. a
-  "Start a call" action).
+  `components/command-palette.tsx` is a plain list of `CommandItem`s to extend if useful). The
+  sidebar's bottom links (`BOTTOM` in `components/sidebar.tsx`) and the phone tab bar (`TABS` in
+  `components/mobile-nav.tsx`) are the two lists to extend for a new top-level page; give the page
+  a `<PageHeader>` so it gets the phone's back chevron.
 - **Settings**: add one line to the `SECTIONS` array in `routes/_app/settings.tsx` and a new
   `routes/_app/settings/<yours>.tsx` route (see `general.tsx`/`harnesses.tsx` for the pattern:
-  wrap content in the shared `<Section title="…">` from `settings.tsx`).
+  wrap content in the shared `<Section title="…">` and `<Card>` from `settings.tsx`).
 - **Details panel**: append a `<Section title="…">` (the `Section`/`Row` helpers in
   `components/details-panel.tsx` are shared).
 - **Agent editor**: append a `FormSection` in `components/agent-form.tsx`, before the submit

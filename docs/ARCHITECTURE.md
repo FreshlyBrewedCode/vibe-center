@@ -345,10 +345,24 @@ ignore unknown types, so new events never break older tabs. Server code publishe
   `lib/api.ts` (any 401 drops to the signed-out screen). `lib/events.ts` applies events to the
   same cache in `applyEvent`; `subscribe()` is for side effects (notifications, call UI).
   Components never hold copies of server state.
-- UI: shadcn/ui components in `components/ui/` (add more with `bunx shadcn@4.23.0 add <name>`
-  in `packages/web`), and theme tokens in `index.css`, including the presence colours. Use the
-  semantic classes (`bg-background`, `text-muted-foreground`, `bg-presence-working`), not raw
-  colours. Theme: `lib/theme.ts` (light/dark/system).
+- UI: the "Nocturne Ash" design (design/explorations/README.md §6b): warm charcoal surfaces, an
+  ivory monochrome accent, hairlines, colour only for presence and the approval card, glow only
+  on live states. shadcn/ui components in `components/ui/` (add more with
+  `bunx shadcn@4.23.0 add <name>` in `packages/web`, then restyle to the tokens), theme tokens in
+  `index.css` (the shadcn semantic names plus `--panel`, `--line`/`--line-strong`, `--elev`, the
+  presence colours and `--call`; Inter and JetBrains Mono are bundled from fontsource). Use the
+  semantic classes (`bg-background`, `bg-panel`, `text-muted-foreground`, `text-presence-waiting`),
+  never raw colours. Theme: `lib/theme.ts` (dark by default, light, system).
+- Layout: on desktop the sidebar is an icon rail of presence-ringed avatars that expands to a
+  list (`lib/sidebar.ts`, ⌘\, remembered per device); the DM is a centred 960px column of rows
+  with a name line (no bubbles), consecutive tool calls fold into one activity card
+  (`dm/message-list.ts` computes the `Fold`), and a call is a floating card over the thread
+  (`voice/call.tsx`). Below `sm` (`lib/media.ts`) there is no sidebar: the agent list is the home
+  screen with a tab bar (`mobile-nav.tsx`), DMs and pages push over it with a back chevron, and a
+  call is a strip under the DM header that opens a full-screen call sheet. The call UI exists once
+  per DM (`CallUi` picks card or strip/sheet), so its test ids stay unique.
+- Screenshots of the real app: `bun scripts/screenshots.ts` renders every screen (dark, light,
+  desktop, phone, a real call) into `docs/screenshots/`.
 
 ## Voice calls (phase 2b)
 

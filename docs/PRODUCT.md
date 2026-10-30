@@ -94,9 +94,12 @@ remote.
 
 ## UX: what makes it feel like a product
 
-- Slack-like layout: sidebar with agents (avatar, **presence**: idle / thinking / working / in
-  call / error, **unread** badge), DM in the middle, details panel (agent info, current session,
-  tools) on demand. Dark and light theme. Keyboard first: ⌘K switcher and global message search
+- Slack-like layout in the "Nocturne Ash" look (dark first, warm charcoal, one ivory accent):
+  a collapsible icon-rail sidebar with agents (avatar with a **presence** ring: idle / thinking /
+  working / needs approval / in call / error, **unread** badge), DM in the middle as rows with a
+  name line (no bubbles; consecutive tool calls fold into one activity card), details panel
+  (agent info, current session, tools) on demand. On the phone the agent list is the home screen
+  and DMs push over it. Dark and light theme. Keyboard first: ⌘K switcher and global message search
 - streaming replies with markdown and code highlighting; a stop button that cancels the turn;
   tool calls and permission requests inline; plans and "thinking" collapsed by default
 - creating an agent is quick: a template picker ("Coding agent", "Manager", "Blank") pre-fills
