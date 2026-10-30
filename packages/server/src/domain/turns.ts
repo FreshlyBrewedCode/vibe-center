@@ -119,7 +119,9 @@ export class TurnRecorder {
         role: "system",
         status: "complete",
         text: result.error,
-        data: { stopReason: result.stopReason },
+        // A turn-level error is always a harness problem (crash, timeout, missing auth, bad
+        // command): point at the setting that's most likely to fix it.
+        data: { stopReason: result.stopReason, hint: "settings:harnesses" },
       });
       this.onUnread(this.ctx.conversationId);
     }

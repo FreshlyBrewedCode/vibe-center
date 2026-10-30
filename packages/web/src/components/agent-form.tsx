@@ -1,7 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
-import type { AgentBody, AgentView, ConfigOption, ConfigValues, Harness } from "@vibe-center/shared";
+import {
+  type AgentBody,
+  type AgentView,
+  BUILTIN_SERVER_ID,
+  type ConfigOption,
+  type ConfigValues,
+  type Harness,
+  mcpPaths,
+} from "@vibe-center/shared";
 import { RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
 import { useHarnesses, useProbeHarness, useSaveAgent } from "@/lib/queries";
 import type { AgentTemplate } from "./agent-templates";
 import { HealthBadge } from "./health-badge";
@@ -56,6 +65,21 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
     configOptions.find((o) => o.category === "model") ?? configOptions.find((o) => o.id === "model");
   const otherOptions = configOptions.filter((o) => o !== modelOption);
 
+  // Once the harness's probed model list is known, pick a sensible default for the template
+  // (e.g. a "sonnet"-tier model) instead of leaving the harness's own default. Runs once; the
+  // user's own choice afterwards is never overwritten.
+  const appliedTemplateModel = useRef(false);
+  useEffect(() => {
+    if (appliedTemplateModel.current || agent || !template?.modelPreference) return;
+    if (modelOption?.type !== "select") return;
+    appliedTemplateModel.current = true;
+    const pref = template.modelPreference.toLowerCase();
+    const pick = modelOption.options.find(
+      (c) => c.name.toLowerCase().includes(pref) || c.value.toLowerCase().includes(pref),
+    );
+    if (pick) setForm((f) => ({ ...f, model: pick.value }));
+  }, [agent, template, modelOption]);
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const body: AgentBody = {
@@ -70,7 +94,22 @@ export function AgentForm({ agent, template }: { agent?: AgentView; template?: A
       voice: form.voice ?? null,
     };
     save.mutate(body, {
-      onSuccess: (a) => navigate({ to: "/agents/$agentId", params: { agentId: a.id } }),
+      onSuccess: async (a) => {
+        if (!agent && template?.tools) {
+          await Promise.all(
+            template.tools.map((t) =>
+              api
+                .patch(mcpPaths.agentTools(a.id), {
+                  serverId: BUILTIN_SERVER_ID,
+                  tool: t.tool,
+                  enabled: t.enabled,
+                })
+                .catch(() => {}),
+            ),
+          );
+        }
+        navigate({ to: "/agents/$agentId", params: { agentId: a.id } });
+      },
       onError: (err) => toast.error(err.message),
     });
   };

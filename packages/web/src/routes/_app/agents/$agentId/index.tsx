@@ -48,12 +48,16 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
   const busy = agent.presence === "thinking" || agent.presence === "working" || agent.presence === "waiting";
   const lastSeq = messages.data?.messages.at(-1)?.seq ?? 0;
   const harness = harnesses.data?.find((h) => h.id === agent.harnessId);
-  const harnessDown =
-    harness && (harness.health.status === "not_installed" || harness.health.status === "error")
-      ? { message: harness.health.message ?? `${harness.name} is unavailable.` }
+  // Only a confirmed-unusable harness (not installed, or auth missing) blocks sending. "error" is
+  // often a stale or flaky probe (e.g. a timeout at boot); show it but let a real send try anyway.
+  const harnessIssue =
+    harness?.health.status === "not_installed"
+      ? { message: harness.health.message ?? `${harness.name} is unavailable.`, blocking: true }
       : harness?.health.status === "auth_required"
-        ? { message: `${harness.name} needs you to sign in.` }
-        : null;
+        ? { message: `${harness.name} needs you to sign in.`, blocking: true }
+        : harness?.health.status === "error"
+          ? { message: harness.health.message ?? `${harness.name} had a problem.`, blocking: false }
+          : null;
 
   // Reading the DM clears its unread badge (on every device, via the event channel).
   useEffect(() => {
@@ -133,8 +137,9 @@ function Dm({ agent, jumpToSeq }: { agent: NonNullable<ReturnType<typeof useAgen
         <Composer
           conversationId={agent.conversationId}
           agentName={agent.name}
+          harnessId={agent.harnessId}
           busy={busy}
-          harnessDown={harnessDown}
+          harnessIssue={harnessIssue}
         />
       </div>
       {detailsOpen && <DetailsPanel agent={agent} onClose={() => setDetailsOpen(false)} />}

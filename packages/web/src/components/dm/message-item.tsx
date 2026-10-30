@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "../agent-avatar";
 import { Markdown } from "../markdown";
 import { GatewayCallDetails, gatewayTitle } from "../mcp/gateway-call";
+import { FixInSettingsLink } from "../settings-hint";
 
 /** One row in the DM. `showHeader` is false for follow-ups from the same sender. */
 export function MessageItem({
@@ -99,7 +100,8 @@ export function MessageItem({
         <Row message={m} agent={agent} showHeader={showHeader}>
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-            <span className="whitespace-pre-wrap">{m.text}</span>
+            <span className="flex-1 whitespace-pre-wrap">{m.text}</span>
+            {m.data?.hint && <FixInSettingsLink hint={m.data.hint} />}
           </div>
         </Row>
       );
@@ -218,7 +220,17 @@ function ToolCard({ message: m }: { message: Extract<Message, { kind: "tool_call
         }
       >
         {d.gateway ? (
-          <GatewayCallDetails call={d.gateway} />
+          <>
+            <GatewayCallDetails call={d.gateway} />
+            {d.toolStatus === "failed" && (
+              <div className="flex items-center gap-2 pt-2">
+                <span className="flex-1 text-muted-foreground text-xs">
+                  The "{d.gateway.server}" MCP server may be misconfigured or down.
+                </span>
+                <FixInSettingsLink hint="settings:mcp" />
+              </div>
+            )}
+          </>
         ) : (
           <>
             {d.locations.length > 0 && (

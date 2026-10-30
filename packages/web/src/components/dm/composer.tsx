@@ -1,31 +1,36 @@
-import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUp, Square } from "lucide-react";
+import { AlertTriangle, ArrowUp, RefreshCw, Square } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useCancel, useSendMessage } from "@/lib/queries";
+import { useCancel, useProbeHarness, useSendMessage } from "@/lib/queries";
+import { FixInSettingsLink } from "../settings-hint";
 
 /**
  * Enter sends, Shift+Enter is a newline. While the agent is busy, Stop cancels the turn.
- * `harnessDown` disables the composer with a banner pointing at the fix, instead of letting the
- * user send into a harness that will just error.
+ * `harnessIssue` shows a banner pointing at the fix; it only disables sending when `blocking`
+ * (not installed, or auth missing) — a cached probe `error` (e.g. a stale timeout at boot) stays
+ * visible but doesn't lock the DM, since a real send might still work. Any send failure, or the
+ * banner's own button, re-checks the harness's health.
  */
 export function Composer({
   conversationId,
   agentName,
+  harnessId,
   busy,
-  harnessDown,
+  harnessIssue,
 }: {
   conversationId: string;
   agentName: string;
+  harnessId: string;
   busy: boolean;
-  harnessDown?: { message: string } | null;
+  harnessIssue?: { message: string; blocking: boolean } | null;
 }) {
   const [text, setText] = useState("");
   const send = useSendMessage(conversationId);
   const cancel = useCancel(conversationId);
-  const disabled = !!harnessDown;
+  const probe = useProbeHarness();
+  const disabled = !!harnessIssue?.blocking;
 
   const submit = () => {
     const t = text.trim();
@@ -35,22 +40,29 @@ export function Composer({
       onError: (e) => {
         setText(t);
         toast.error(e.message);
+        probe.mutate({ id: harnessId });
       },
     });
   };
 
   return (
     <div className="border-t p-3">
-      {harnessDown && (
+      {harnessIssue && (
         <div
           data-testid="harness-down-banner"
           className="mb-2 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm"
         >
           <AlertTriangle className="size-4 shrink-0 text-destructive" />
-          <span className="flex-1">{harnessDown.message}</span>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/settings/harnesses">Fix in Settings</Link>
+          <span className="flex-1">{harnessIssue.message}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={probe.isPending}
+            onClick={() => probe.mutate({ id: harnessId })}
+          >
+            <RefreshCw className={probe.isPending ? "size-3.5 animate-spin" : "size-3.5"} /> Check again
           </Button>
+          <FixInSettingsLink hint="settings:harnesses" />
         </div>
       )}
       <div
