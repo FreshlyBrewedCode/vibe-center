@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useHarnesses, useProbeHarness, useSaveAgent } from "@/lib/queries";
 import type { AgentTemplate } from "./agent-templates";
+import { Combobox } from "./combobox";
 import { HealthBadge } from "./health-badge";
 import { VoicePicker } from "./voice/voice-picker";
 
@@ -294,6 +295,9 @@ function HarnessStatusLine({
   );
 }
 
+/** Above this many choices, a plain Select mounts every item and has no search: use a combobox. */
+const COMBOBOX_THRESHOLD = 20;
+
 function OptionSelect({
   option,
   value,
@@ -305,6 +309,20 @@ function OptionSelect({
   onChange: (v: string | null) => void;
   label: string;
 }) {
+  if (option.options.length > COMBOBOX_THRESHOLD) {
+    return (
+      <Combobox
+        ariaLabel={label}
+        placeholder="Harness default"
+        value={value ?? ""}
+        onChange={(v) => onChange(v || null)}
+        options={[
+          { value: "", label: "Harness default" },
+          ...option.options.map((c) => ({ value: c.value, label: c.name, group: c.group })),
+        ]}
+      />
+    );
+  }
   const groups = new Map<string, typeof option.options>();
   for (const c of option.options) {
     const g = c.group ?? "";
