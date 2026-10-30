@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { SttLanguage, SttModels, SttVocabulary, TurnRecordings } from "@/components/voice/stt-settings";
 import {
   useGpuSpeech,
   useRestartVoiceWorker,
@@ -251,6 +252,19 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
         </div>
       </Section>
 
+      <Section title="Speech-to-text model">
+        <p className="text-muted-foreground text-xs">
+          The model the STT server uses for calls. Only the models you download take disk space; switching
+          takes a few seconds and needs no restart. Speed and accuracy were measured on km-pc's RTX 3070 with
+          this project's evaluation set.
+        </p>
+        <SttModels />
+        <div className="space-y-4 rounded-lg border p-3">
+          <SttLanguage settings={settings} patch={patch} />
+          <SttVocabulary settings={settings} patch={patch} saving={save.isPending} />
+        </div>
+      </Section>
+
       <Section title="Calls">
         <div className="flex items-start gap-3 rounded-lg border p-3">
           <Switch
@@ -271,6 +285,10 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
           Each agent's voice is set in its editor. Use a headset: with laptop speakers the agent's voice can
           interrupt itself.
         </p>
+      </Section>
+
+      <Section title="Debugging">
+        <TurnRecordings settings={settings} patch={patch} />
       </Section>
     </div>
   );

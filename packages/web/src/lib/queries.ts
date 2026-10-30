@@ -34,7 +34,11 @@ import {
   type MintLinkResponse,
   mcpPaths,
   paths,
+  type RecordingsResponse,
   type SendMessageResponse,
+  type SttModel,
+  type SttModelAction,
+  type SttModelsResponse,
   type VoiceSettings,
   type VoiceSettingsPatchBody,
   type VoiceStatus,
@@ -70,6 +74,8 @@ export const keys = {
   voiceStatus: ["voice", "status"] as const,
   voices: ["voice", "voices"] as const,
   calls: ["voice", "calls"] as const,
+  sttModels: ["voice", "stt-models"] as const,
+  recordings: ["voice", "recordings"] as const,
 };
 
 /** The signed-in device, or null when signed out (401). */
@@ -398,6 +404,58 @@ export const useVoices = (enabled = true) =>
     retry: false,
     staleTime: 60_000,
   });
+
+/**
+ * The STT server's model catalog with each model's status. It lives on the speech server (not in
+ * the app), so there are no events: poll every second while a model downloads or loads.
+ */
+export const useSttModels = () =>
+  useQuery({
+    queryKey: keys.sttModels,
+    queryFn: () => api.get<SttModelsResponse>(voicePaths.sttModels),
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      const busy =
+        d && (d.loading || d.models.some((m) => m.status === "downloading" || m.status === "loading"));
+      return busy ? 1000 : 10_000;
+    },
+  });
+
+export type SttModelCommand = SttModelAction | "cancel" | "delete";
+
+export function useSttModelAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: SttModelCommand }) =>
+      action === "delete"
+        ? api.delete<SttModel>(voicePaths.sttModel(id))
+        : action === "cancel"
+          ? api.delete<SttModel>(voicePaths.sttModelAction(id, "download"))
+          : api.post<SttModel>(voicePaths.sttModelAction(id, action)),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.sttModels });
+      void qc.invalidateQueries({ queryKey: keys.voiceStatus });
+    },
+  });
+}
+
+/** The worker's debug turn recordings (only while the setting is on, or some are left). */
+export const useRecordings = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.recordings,
+    queryFn: () => api.get<RecordingsResponse>(voicePaths.recordings),
+    enabled,
+    retry: false,
+    refetchInterval: enabled ? 10_000 : false,
+  });
+
+export function useClearRecordings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.delete<{ deleted: number }>(voicePaths.recordings),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.recordings }),
+  });
+}
 
 /** Active calls (all devices). `call.upsert` events keep the list current. */
 export const useCalls = () =>

@@ -6,9 +6,14 @@ import {
   type CallState,
   type GpuSpeechAction,
   type IceBody,
+  type RecordingsResponse,
   type ServiceHealth,
   type StartCallBody,
   type StartCallResponse,
+  type SttModel,
+  type SttModelAction,
+  type SttModelsResponse,
+  type TurnRecording,
   type VoiceSettings,
   type VoiceSettingsPatchBody,
   type VoiceStatus,
@@ -25,6 +30,7 @@ import type { EventBus } from "../events/bus.ts";
 import { type ProcessTracker, stopGroup } from "../procs.ts";
 import { type BridgeSocketData, CallBridge, type SpokenEvent } from "./bridge.ts";
 import { publicSettings, type StoredVoiceSettings, VoiceSettingsStore } from "./settings.ts";
+import { listSttModels, sttModelAction } from "./stt-models.ts";
 import { ManagedWorker, WorkerClient, WorkerError, type WorkerHealth } from "./worker.ts";
 
 const REPO = join(import.meta.dir, "../../../..");
@@ -305,6 +311,70 @@ export class VoiceService {
     return new Response(res.body, { headers: { "content-type": "audio/wav", "cache-control": "no-store" } });
   }
 
+  // ---- speech-to-text models and debug recordings ---------------------------------------------
+
+  /** The STT server's catalog with each model's status (never throws: offline is a state). */
+  sttModels(): Promise<SttModelsResponse> {
+    return listSttModels(this.store.get().sttUrl);
+  }
+
+  async sttModelAction(id: string, action: SttModelAction | "cancel" | "delete"): Promise<SttModel> {
+    const model = await sttModelAction(this.store.get().sttUrl, id, action);
+    if (action === "activate") void this.checkHealth();
+    return model;
+  }
+
+  /** What the worker kept of recent turns (Settings → Voice → debug recordings). */
+  async recordings(): Promise<RecordingsResponse> {
+    const res = await this.requireWorker().json<{ recordings: RawRecording[] }>("/recordings", {
+      timeoutMs: 5000,
+    });
+    return {
+      recordings: res.recordings.map(
+        (r): TurnRecording => ({
+          id: r.id,
+          callId: r.call_id,
+          turn: r.turn,
+          text: r.text,
+          stt: r.stt,
+          duration: r.duration,
+          at: r.at,
+        }),
+      ),
+    };
+  }
+
+  async recordingAudio(id: string): Promise<Response> {
+    const res = await this.requireWorker().request(`/recordings/${encodeURIComponent(id)}.wav`, {
+      timeoutMs: 10_000,
+    });
+    if (res.status === 404) throw new HttpError(404, "no such recording");
+    if (!res.ok) throw new HttpError(502, `the worker answered ${res.status}`);
+    return new Response(res.body, { headers: { "content-type": "audio/wav", "cache-control": "no-store" } });
+  }
+
+  async clearRecordings(): Promise<number> {
+    const res = await this.requireWorker().json<{ deleted: number }>("/recordings", {
+      method: "DELETE",
+      timeoutMs: 5000,
+    });
+    return res.deleted;
+  }
+
+  /** The settings' vocabulary plus every agent's name, without duplicates. */
+  private vocabulary(s: StoredVoiceSettings): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const term of [...s.sttVocabulary, ...this.deps.repos.agents.list().map((a) => a.name)]) {
+      const key = term.trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out.push(term.trim());
+      }
+    }
+    return out;
+  }
+
   // ---- calls ----------------------------------------------------------------------------------
 
   listCalls(): Call[] {
@@ -367,6 +437,9 @@ export class VoiceService {
             stt_url: s.sttUrl,
             tts_url: s.ttsUrl,
             filler: s.filler,
+            vocabulary: this.vocabulary(s),
+            stt_language: s.sttLanguage,
+            record_turns: s.recordTurns,
             sdp: body.sdp,
             type: body.type,
           },
@@ -568,6 +641,16 @@ export class VoiceService {
     });
     return this.status();
   }
+}
+
+interface RawRecording {
+  id: string;
+  call_id: string;
+  turn: number;
+  text: string;
+  stt: string;
+  duration: number;
+  at: number;
 }
 
 async function speechHealth(url: string, what: string): Promise<ServiceHealth> {

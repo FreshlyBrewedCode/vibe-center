@@ -7,8 +7,13 @@ import {
   type GpuSpeechAction,
   IceBody,
   PreviewBody,
+  type RecordingsResponse,
+  STT_MODEL_ACTIONS,
   StartCallBody,
   type StartCallResponse,
+  type SttModel,
+  type SttModelAction,
+  type SttModelsResponse,
   type VoiceSettings,
   VoiceSettingsPatchBody,
   type VoiceStatus,
@@ -47,6 +52,27 @@ export function createVoiceApi(s: Services): Hono<AuthedEnv> {
     const body = PreviewBody.parse(await c.req.json());
     return v.preview(body.voice, body.text);
   });
+
+  api.get("/stt/models", async (c) => c.json<SttModelsResponse>(await v.sttModels()));
+  api.post("/stt/models/:id/:action", async (c) => {
+    const action = c.req.param("action") as SttModelAction;
+    if (!STT_MODEL_ACTIONS.includes(action)) throw new HttpError(404, "unknown action");
+    return c.json<SttModel>(await v.sttModelAction(c.req.param("id"), action), 202);
+  });
+  api.delete("/stt/models/:id/download", async (c) =>
+    c.json<SttModel>(await v.sttModelAction(c.req.param("id"), "cancel")),
+  );
+  api.delete("/stt/models/:id", async (c) =>
+    c.json<SttModel>(await v.sttModelAction(c.req.param("id"), "delete")),
+  );
+
+  api.get("/recordings", async (c) => c.json<RecordingsResponse>(await v.recordings()));
+  api.get("/recordings/:file", (c) => {
+    const file = c.req.param("file");
+    if (!file.endsWith(".wav")) throw new HttpError(404, "no such recording");
+    return v.recordingAudio(file.slice(0, -4));
+  });
+  api.delete("/recordings", async (c) => c.json({ deleted: await v.clearRecordings() }));
 
   api.get("/calls", (c) => c.json<CallsResponse>(v.listCalls()));
   api.post("/calls", async (c) => {

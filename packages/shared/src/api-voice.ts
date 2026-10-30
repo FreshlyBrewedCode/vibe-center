@@ -15,6 +15,14 @@ export const voicePaths = {
   call: (id: string) => `/api/voice/calls/${id}`,
   callIce: (id: string) => `/api/voice/calls/${id}/ice`,
   callEvent: (id: string) => `/api/voice/calls/${id}/event`,
+  /** The STT server's model catalog, proxied (it may run on another machine). */
+  sttModels: "/api/voice/stt/models",
+  sttModel: (id: string) => `/api/voice/stt/models/${encodeURIComponent(id)}`,
+  sttModelAction: (id: string, action: SttModelAction) =>
+    `/api/voice/stt/models/${encodeURIComponent(id)}/${action}`,
+  /** Debug turn recordings kept by the worker (Settings → Voice). */
+  recordings: "/api/voice/recordings",
+  recording: (id: string) => `/api/voice/recordings/${encodeURIComponent(id)}.wav`,
   /** The worker's WebSocket back into the app (per-call Bearer credential, not the cookie). */
   bridge: "/voice/bridge",
 } as const;
@@ -39,6 +47,18 @@ export interface VoiceSettings {
   ttsUrl: string;
   /** Spoken filler ("One sec.") when a tool call starts before the agent said anything. */
   filler: boolean;
+  /**
+   * Terms the STT should recognise (project names, jargon). Every agent's name is added per call.
+   * Used where the active model supports it (Whisper: hotwords); see `SttModel.supportsVocabulary`.
+   */
+  sttVocabulary: string[];
+  /**
+   * What the user speaks, as an ISO 639-1 code ("en", "de", …), or "" to let a multilingual model
+   * detect it per utterance. English-only models ignore it.
+   */
+  sttLanguage: string;
+  /** Debug: keep the last N user turns of calls as audio + transcript on the worker. 0 = off. */
+  recordTurns: number;
 }
 
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
@@ -50,7 +70,12 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   sttUrl: "http://127.0.0.1:8401",
   ttsUrl: "http://127.0.0.1:8402",
   filler: true,
+  sttVocabulary: [],
+  sttLanguage: "en",
+  recordTurns: 0,
 };
+
+export const MAX_RECORD_TURNS = 200;
 
 const url = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
 // Default-free field set: PATCH must never fill in defaults over stored values.
@@ -64,6 +89,9 @@ export const VoiceSettingsPatchBody = z
     sttUrl: url,
     ttsUrl: url,
     filler: z.boolean(),
+    sttVocabulary: z.array(z.string().trim().min(1).max(100)).max(200),
+    sttLanguage: z.string().regex(/^([a-z]{2})?$/, "an ISO 639-1 code like en, or empty to detect"),
+    recordTurns: z.number().int().min(0).max(MAX_RECORD_TURNS),
   })
   .partial();
 export type VoiceSettingsPatchBody = z.input<typeof VoiceSettingsPatchBody>;
@@ -103,6 +131,73 @@ export interface VoiceStatus {
 
 export const GPU_SPEECH_ACTIONS = ["up", "down", "status"] as const;
 export type GpuSpeechAction = (typeof GPU_SPEECH_ACTIONS)[number];
+
+// ---- speech-to-text models (the STT server's catalog) -----------------------------------------
+
+export const STT_MODEL_ACTIONS = ["download", "activate"] as const;
+export type SttModelAction = (typeof STT_MODEL_ACTIONS)[number];
+
+/** `absent`: not on disk. `ready`: downloaded. `loading`: being activated. `active`: serving. */
+export type SttModelStatus = "absent" | "downloading" | "ready" | "loading" | "active";
+
+export interface SttModel {
+  id: string;
+  name: string;
+  /** "onnx-asr" | "faster-whisper" */
+  backend: string;
+  downloadMb: number;
+  /** What the model's files take on the server now (0 when absent). */
+  diskMb: number;
+  vramMb: number;
+  /** Median server time per utterance, measured on the GPU box. */
+  latencyMs: number;
+  /** Word error rate (%) on the project's evaluation set, if measured. */
+  wer: number | null;
+  languages: string[];
+  accuracy: string;
+  supportsVocabulary: boolean;
+  recommended: boolean;
+  status: SttModelStatus;
+  progress: {
+    phase: "starting" | "runtime" | "download" | "convert";
+    doneBytes: number;
+    totalBytes: number;
+    /** 0–1 while bytes are counted; null in phases without a size. */
+    fraction: number | null;
+  } | null;
+  /** The last download or activation failure, if any. */
+  error: string | null;
+}
+
+export interface SttModelsResponse {
+  /** The STT URL from the settings. */
+  url: string;
+  /** False when the server can't be reached, or doesn't have a model catalog (an older one). */
+  reachable: boolean;
+  message: string | null;
+  active: string | null;
+  loading: string | null;
+  default: string | null;
+  models: SttModel[];
+}
+
+// ---- debug turn recordings --------------------------------------------------------------------
+
+export interface TurnRecording {
+  id: string;
+  callId: string;
+  turn: number;
+  /** The transcript the STT returned for this audio. */
+  text: string;
+  /** Which STT heard it (a server URL, or "cpu …"). */
+  stt: string;
+  duration: number;
+  at: Timestamp;
+}
+
+export interface RecordingsResponse {
+  recordings: TurnRecording[];
+}
 
 // ---- calls ------------------------------------------------------------------------------------
 

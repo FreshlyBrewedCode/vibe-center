@@ -7,8 +7,11 @@ import type {
   Call,
   Harness,
   MessagesResponse,
+  RecordingsResponse,
   ServerEvent,
   StartCallResponse,
+  SttModel,
+  SttModelsResponse,
   VoiceSettings,
   VoiceStatus,
 } from "@vibe-center/shared";
@@ -177,11 +180,152 @@ describe("managed voice worker", () => {
     await api("/api/voice/settings", { method: "PATCH", json: { filler: true } });
   });
 
+  test("settings: custom vocabulary and debug recordings", async () => {
+    const s = await api<VoiceSettings>("/api/voice/settings");
+    expect(s).toMatchObject({ sttVocabulary: [], sttLanguage: "en", recordTurns: 0 });
+    expect(
+      await api<VoiceSettings>("/api/voice/settings", { method: "PATCH", json: { sttLanguage: "" } }),
+    ).toMatchObject({ sttLanguage: "" });
+    await api("/api/voice/settings", { method: "PATCH", json: { sttLanguage: "en" } });
+    const next = await api<VoiceSettings>("/api/voice/settings", {
+      method: "PATCH",
+      json: { sttVocabulary: [" Pipecat ", "Vibe Center"], recordTurns: 5 },
+    });
+    expect(next).toMatchObject({ sttVocabulary: ["Pipecat", "Vibe Center"], recordTurns: 5, filler: true });
+    for (const json of [
+      { recordTurns: 9999 },
+      { recordTurns: -1 },
+      { sttVocabulary: [""] },
+      { sttLanguage: "english" },
+    ]) {
+      expect((await raw("/api/voice/settings", { method: "PATCH", json })).status).toBe(400);
+    }
+    await api("/api/voice/settings", { method: "PATCH", json: { recordTurns: 0 } });
+  });
+
+  test("debug recordings are listed, played and cleared through the worker", async () => {
+    const list = await api<RecordingsResponse>("/api/voice/recordings");
+    expect(list.recordings).toEqual([
+      expect.objectContaining({
+        id: "20261030-101500-c0ffee00-t1",
+        callId: "c0ffee00",
+        turn: 1,
+        text: "hello",
+      }),
+    ]);
+    const wav = await raw("/api/voice/recordings/20261030-101500-c0ffee00-t1.wav");
+    expect(wav.headers.get("content-type")).toBe("audio/wav");
+    expect((await raw("/api/voice/recordings/nope.wav")).status).toBe(404);
+    expect(await api("/api/voice/recordings", { method: "DELETE" })).toEqual({ deleted: 1 });
+  });
+
   test("voices and preview go through the worker", async () => {
     const v = await api<{ voices: string[] }>("/api/voice/voices");
     expect(v.voices).toContain("bm_george");
     const res = await raw("/api/voice/preview", { method: "POST", json: { voice: "bm_george" } });
     expect(res.headers.get("content-type")).toBe("audio/wav");
+  });
+});
+
+describe("speech-to-text models (the STT server's catalog, proxied)", () => {
+  // a stand-in for services/speech-gpu's /v1/stt/models API
+  const seen: string[] = [];
+  const model = (id: string, status: string) => ({
+    id,
+    name: id.toUpperCase(),
+    backend: "onnx-asr",
+    runtime: "cu13",
+    download_mb: 2470,
+    disk_mb: status === "absent" ? 0 : 1250,
+    vram_mb: 1700,
+    latency_ms: 35,
+    wer: 3,
+    languages: ["en"],
+    accuracy: "good",
+    supports_vocabulary: id === "whisper",
+    recommended: id === "parakeet",
+    status,
+    progress:
+      status === "downloading" ? { phase: "download", done_bytes: 5, total_bytes: 10, fraction: 0.5 } : null,
+    error: null,
+  });
+  let catalog = true;
+  const stt = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch(req) {
+      const { pathname } = new URL(req.url);
+      seen.push(`${req.method} ${pathname}`);
+      if (!catalog) return Response.json({ detail: "Not Found" }, { status: 404 });
+      if (pathname === "/v1/stt/models")
+        return Response.json({
+          active: "parakeet",
+          loading: null,
+          default: "parakeet",
+          models: [model("parakeet", "active"), model("whisper", "downloading")],
+          runtimes: {},
+        });
+      if (pathname === "/v1/stt/models/whisper/activate")
+        return Response.json({ detail: "download it first" }, { status: 409 });
+      if (pathname === "/v1/stt/models/parakeet" && req.method === "DELETE")
+        return Response.json(
+          { detail: "it is the active model: switch to another one first" },
+          { status: 409 },
+        );
+      const m = pathname.match(/^\/v1\/stt\/models\/([^/]+)(\/download)?$/);
+      if (m)
+        return Response.json(model(m[1]!, req.method === "POST" ? "downloading" : "absent"), { status: 202 });
+      return Response.json({ detail: "Not Found" }, { status: 404 });
+    },
+  });
+  const sttUrl = `http://127.0.0.1:${stt.port}`;
+  afterAll(() => stt.stop(true));
+
+  test("lists the catalog with status and progress", async () => {
+    await api("/api/voice/settings", { method: "PATCH", json: { sttUrl } });
+    const r = await api<SttModelsResponse>("/api/voice/stt/models");
+    expect(r).toMatchObject({ url: sttUrl, reachable: true, active: "parakeet", default: "parakeet" });
+    expect(r.models[0]).toMatchObject({ id: "parakeet", status: "active", diskMb: 1250, recommended: true });
+    expect(r.models[1]).toMatchObject({
+      id: "whisper",
+      supportsVocabulary: true,
+      progress: { phase: "download", doneBytes: 5, totalBytes: 10, fraction: 0.5 },
+    });
+  });
+
+  test("download, cancel, activate and delete are passed on, refusals keep their reason", async () => {
+    const dl = await raw("/api/voice/stt/models/whisper/download", { method: "POST" });
+    expect(dl.status).toBe(202);
+    expect(((await dl.json()) as SttModel).status).toBe("downloading");
+    await api("/api/voice/stt/models/whisper/download", { method: "DELETE" });
+    await api("/api/voice/stt/models/whisper", { method: "DELETE" });
+    const refused = await raw("/api/voice/stt/models/whisper/activate", { method: "POST" });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ error: "download it first" });
+    const active = await raw("/api/voice/stt/models/parakeet", { method: "DELETE" });
+    expect(active.status).toBe(409);
+    expect((await raw("/api/voice/stt/models/whisper/frobnicate", { method: "POST" })).status).toBe(404);
+    expect(seen).toEqual(
+      expect.arrayContaining([
+        "POST /v1/stt/models/whisper/download",
+        "DELETE /v1/stt/models/whisper/download",
+        "DELETE /v1/stt/models/whisper",
+        "POST /v1/stt/models/whisper/activate",
+      ]),
+    );
+  });
+
+  test("degrades clearly: offline, or a server without a catalog", async () => {
+    catalog = false;
+    const plain = await api<SttModelsResponse>("/api/voice/stt/models");
+    expect(plain).toMatchObject({ reachable: false, models: [] });
+    expect(plain.message).toContain("no model catalog");
+    catalog = true;
+    await api("/api/voice/settings", { method: "PATCH", json: { sttUrl: "http://127.0.0.1:1" } });
+    const down = await api<SttModelsResponse>("/api/voice/stt/models");
+    expect(down).toMatchObject({ reachable: false, url: "http://127.0.0.1:1" });
+    expect(down.message).toContain("offline");
+    expect((await raw("/api/voice/stt/models/whisper/download", { method: "POST" })).status).toBe(503);
   });
 });
 
@@ -216,6 +360,12 @@ describe("a call through the bridge", () => {
     const reqs = await worker<{ path: string; body: Record<string, unknown> }[]>("/test/requests");
     const started = reqs.find((r) => r.path === "/calls")!.body;
     expect(started).toMatchObject({ call_id: call.id, voice: "bm_george", filler: true, agent_name: "Echo" });
+    // the settings' vocabulary plus every agent's name; recordings off by default
+    expect(started).toMatchObject({
+      vocabulary: ["Pipecat", "Vibe Center", "Echo"],
+      stt_language: "en",
+      record_turns: 0,
+    });
     expect(String(started.bridge_url)).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/voice\/bridge$/);
     expect((await frames())[0]).toMatchObject({ type: "hello", callId: call.id, agentName: "Echo" });
     // the worker reported "listening": presence and call state follow

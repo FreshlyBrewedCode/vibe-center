@@ -21,6 +21,7 @@ let bridge: WebSocket | null = null;
 let callId: string | null = null;
 const frames: Record<string, unknown>[] = [];
 const requests: { method: string; path: string; body: unknown }[] = [];
+let recordings = ["20261030-101500-c0ffee00-t1"];
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 
@@ -130,6 +131,28 @@ Bun.serve({
       bridge?.close();
       callId = null;
       return new Response(null, { status: 204 });
+    }
+    if (pathname === "/recordings" && req.method === "GET")
+      return json({
+        recordings: recordings.map((id) => ({
+          id,
+          call_id: "c0ffee00",
+          turn: 1,
+          text: "hello",
+          stt: "cpu",
+          duration: 1.2,
+          at: 1,
+        })),
+      });
+    if (pathname === "/recordings" && req.method === "DELETE") {
+      const deleted = recordings.length;
+      recordings = [];
+      return json({ deleted });
+    }
+    if (pathname.startsWith("/recordings/")) {
+      if (!recordings.includes(pathname.slice("/recordings/".length, -".wav".length)))
+        return json({ detail: "no such recording" }, 404);
+      return new Response(new Uint8Array(44), { headers: { "content-type": "audio/wav" } });
     }
     if (pathname === "/voices")
       return json({ voices: ["af_heart", "bm_george"], default: "af_heart", source: "cpu" });
