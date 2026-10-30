@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vibe Center — design explorations (gallery)</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #1c1917;
+        background: #f6f5f2;
+      }
+      body {
+        margin: 0;
+        padding: 40px 48px 80px;
+      }
+      h1 {
+        font-size: 26px;
+        margin: 0 0 6px;
+        letter-spacing: -0.01em;
+      }
+      .lede {
+        color: #6f6a64;
+        max-width: 760px;
+        margin: 0 0 32px;
+        line-height: 1.5;
+      }
+      .lede a {
+        color: inherit;
+      }
+      section {
+        margin-top: 44px;
+        padding-top: 28px;
+        border-top: 1px solid #e3e0d9;
+      }
+      h2 {
+        font-size: 20px;
+        margin: 0;
+        letter-spacing: -0.01em;
+      }
+      .idea {
+        color: #57524c;
+        max-width: 820px;
+        margin: 6px 0 18px;
+        line-height: 1.5;
+        font-size: 14px;
+      }
+      .row {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding-bottom: 8px;
+      }
+      figure {
+        margin: 0;
+        flex: 0 0 auto;
+      }
+      figure img {
+        display: block;
+        height: 380px;
+        width: auto;
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.08);
+        background: #e9e7e2;
+      }
+      figcaption {
+        font-size: 12px;
+        color: #6f6a64;
+        margin-top: 8px;
+      }
+      .rec {
+        margin-top: 48px;
+        padding: 20px 24px;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e3e0d9;
+        max-width: 820px;
+        line-height: 1.55;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vibe Center — five design directions</h1>
+    <p class="lede">
+      Same content in every direction: five agents with mixed presence, a DM with a code reply, two tool calls, a
+      voice exchange, an agent-to-agent relay, a streaming reply and a pending approval; then the same DM during a
+      call (state: waiting for approval). Click an image for full size. The live mocks are the Vite app in this
+      folder (<code>bun run dev</code>); the write-up is in <a href="README.md">README.md</a>.
+    </p>
+
+    <section id="workspace">
+      <h2>1. Workspace</h2>
+      <p class="idea">
+        Slack's three-pane layout, done with care: warm neutrals, Inter, generous row rhythm, a sticky header and call
+        strip, a pushed DM on the phone. Optimises for zero learning curve. Shown in light and dark.
+      </p>
+      <div class="row">
+        <figure><a href="screenshots/1-workspace-desktop-dm.png"><img src="screenshots/1-workspace-desktop-dm.png" alt="Desktop DM, details open" /></a><figcaption>Desktop DM, details open</figcaption></figure>
+        <figure><a href="screenshots/1-workspace-desktop-call.png"><img src="screenshots/1-workspace-desktop-call.png" alt="Desktop DM in a call" /></a><figcaption>Desktop DM in a call</figcaption></figure>
+        <figure><a href="screenshots/1-workspace-mobile-call.png"><img src="screenshots/1-workspace-mobile-call.png" alt="iPhone, in a call" /></a><figcaption>iPhone, in a call</figcaption></figure>
+        <figure><a href="screenshots/1-workspace-palette.png"><img src="screenshots/1-workspace-palette.png" alt="⌘K palette" /></a><figcaption>⌘K palette</figcaption></figure>
+        <figure><a href="screenshots/1-workspace-desktop-dm-dark.png"><img src="screenshots/1-workspace-desktop-dm-dark.png" alt="Dark variant" /></a><figcaption>Dark variant</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="console">
+      <h2>2. Console</h2>
+      <p class="idea">
+        A control room for agents: dense, dark, monospace metadata. The sidebar is a live status board with activity
+        sparklines, the DM a timestamped log, tool calls are rows, the call is a channel strip with meters.
+        Optimises for watching several agents at once.
+      </p>
+      <div class="row">
+        <figure><a href="screenshots/2-console-desktop-dm.png"><img src="screenshots/2-console-desktop-dm.png" alt="Desktop DM with inspector" /></a><figcaption>Desktop DM with inspector</figcaption></figure>
+        <figure><a href="screenshots/2-console-desktop-call.png"><img src="screenshots/2-console-desktop-call.png" alt="Desktop DM in a call" /></a><figcaption>Desktop DM in a call</figcaption></figure>
+        <figure><a href="screenshots/2-console-mobile-call.png"><img src="screenshots/2-console-mobile-call.png" alt="iPhone, in a call" /></a><figcaption>iPhone, in a call</figcaption></figure>
+        <figure><a href="screenshots/2-console-mobile-board.png"><img src="screenshots/2-console-mobile-board.png" alt="iPhone status board + activity" /></a><figcaption>iPhone status board + activity</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="messenger">
+      <h2>3. Messenger</h2>
+      <p class="idea">
+        A phone-first calling app: bubbles, big tap targets, vivid agent colours, a green call strip, and a call
+        that takes the stage as a full-screen sheet with captions and the approval inside it. Optimises for the
+        iPhone and for voice.
+      </p>
+      <div class="row">
+        <figure><a href="screenshots/3-messenger-desktop-dm.png"><img src="screenshots/3-messenger-desktop-dm.png" alt="Desktop DM" /></a><figcaption>Desktop DM</figcaption></figure>
+        <figure><a href="screenshots/3-messenger-desktop-call.png"><img src="screenshots/3-messenger-desktop-call.png" alt="Desktop DM in a call (PiP card)" /></a><figcaption>Desktop DM in a call (PiP card)</figcaption></figure>
+        <figure><a href="screenshots/3-messenger-mobile-call.png"><img src="screenshots/3-messenger-mobile-call.png" alt="iPhone, in a call" /></a><figcaption>iPhone, in a call</figcaption></figure>
+        <figure><a href="screenshots/3-messenger-mobile-call-sheet.png"><img src="screenshots/3-messenger-mobile-call-sheet.png" alt="iPhone call sheet" /></a><figcaption>iPhone call sheet</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="editorial">
+      <h2>4. Editorial</h2>
+      <p class="idea">
+        Agents as correspondents: paper tones, Fraunces, a 600px measure, tool calls as marginalia, a thin live
+        ticker for the call, hairlines instead of boxes. Optimises for reading long replies calmly.
+      </p>
+      <div class="row">
+        <figure><a href="screenshots/4-editorial-desktop-dm.png"><img src="screenshots/4-editorial-desktop-dm.png" alt="Desktop DM" /></a><figcaption>Desktop DM</figcaption></figure>
+        <figure><a href="screenshots/4-editorial-desktop-call.png"><img src="screenshots/4-editorial-desktop-call.png" alt="Desktop DM in a call" /></a><figcaption>Desktop DM in a call</figcaption></figure>
+        <figure><a href="screenshots/4-editorial-mobile-call.png"><img src="screenshots/4-editorial-mobile-call.png" alt="iPhone, in a call" /></a><figcaption>iPhone, in a call</figcaption></figure>
+        <figure><a href="screenshots/4-editorial-new-agent.png"><img src="screenshots/4-editorial-new-agent.png" alt="New agent" /></a><figcaption>New agent</figcaption></figure>
+      </div>
+    </section>
+
+    <section id="pulse">
+      <h2>5. Pulse</h2>
+      <p class="idea">
+        Bold, dark, voice-forward: an icon rail of glowing avatars instead of a sidebar, the header as a capsule that
+        expands into a call island, glass surfaces and one gradient for every primary action. Optimises for presence
+        at a glance and one-thumb use.
+      </p>
+      <div class="row">
+        <figure><a href="screenshots/5-pulse-desktop-dm.png"><img src="screenshots/5-pulse-desktop-dm.png" alt="Desktop DM" /></a><figcaption>Desktop DM</figcaption></figure>
+        <figure><a href="screenshots/5-pulse-desktop-call.png"><img src="screenshots/5-pulse-desktop-call.png" alt="Desktop DM in a call (island)" /></a><figcaption>Desktop DM in a call (island)</figcaption></figure>
+        <figure><a href="screenshots/5-pulse-mobile-call.png"><img src="screenshots/5-pulse-mobile-call.png" alt="iPhone, in a call" /></a><figcaption>iPhone, in a call</figcaption></figure>
+        <figure><a href="screenshots/5-pulse-mobile-home.png"><img src="screenshots/5-pulse-mobile-home.png" alt="iPhone home" /></a><figcaption>iPhone home</figcaption></figure>
+      </div>
+    </section>
+
+    <div class="rec">
+      <strong>Recommendation:</strong> Workspace as the base, with Messenger's phone layer (the green call strip, the
+      full-screen call sheet, bottom-anchored composer) and Pulse's presence rings for the sidebar avatars. See
+      README.md for the reasoning.
+    </div>
+  </body>
+</html>
