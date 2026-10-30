@@ -39,6 +39,7 @@ export type AppFrame =
   | { type: "waiting"; id: string; reason: CallWaiting["reason"]; title: string | null }
   | { type: "done"; id: string; status: "complete" | "cancelled" | "error"; error?: string | null }
   | { type: "event"; text: string }
+  | { type: "mute"; muted: boolean }
   | { type: "end"; reason: string };
 
 /** No ACP update for this long ends a voice turn with an error (the worker apologises). */
@@ -95,6 +96,7 @@ export class CallBridge {
   /** Events handed to the worker, waiting for it to prompt them (it does, in order). */
   private events: { text: string; opts: SpokenEvent }[] = [];
   private closed = false;
+  private muted = false;
   private unsubscribe: () => void;
 
   constructor(
@@ -116,6 +118,7 @@ export class CallBridge {
   attach(ws: ServerWebSocket<BridgeSocketData>): void {
     this.ws = ws;
     this.send({ type: "hello", callId: this.callId, agentName: this.agentName });
+    if (this.muted) this.send({ type: "mute", muted: true });
   }
 
   handle(raw: string | Buffer): void {
@@ -152,6 +155,12 @@ export class CallBridge {
     this.events.push({ text: text.trim(), opts });
     this.send({ type: "event", text });
     return true;
+  }
+
+  /** Mute or unmute the user's microphone in the worker (sent again when the worker connects). */
+  mute(muted: boolean): void {
+    this.muted = muted;
+    this.send({ type: "mute", muted });
   }
 
   /** Hang up from the app side (the worker ends its pipeline). */

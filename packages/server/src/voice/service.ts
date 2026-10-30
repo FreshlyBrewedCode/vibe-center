@@ -334,6 +334,7 @@ export class VoiceService {
       speech: null,
       lastTurn: null,
       waiting: null,
+      muted: false,
     };
     const bridge = new CallBridge(id, agent.id, agent.name, this.deps.chat, this.deps.bus, {
       onState: (state) => this.setState(id, state),
@@ -397,6 +398,14 @@ export class VoiceService {
       },
     });
     if (!res.ok) throw new HttpError(502, `ICE candidates refused: ${await res.text()}`);
+  }
+
+  /** Mute from any tab or device: the worker silences the mic, the media's tab follows suit. */
+  setMuted(callId: string, muted: boolean): Call {
+    const live = this.calls.get(callId);
+    if (!live) throw new HttpError(404, "no such call");
+    live.bridge.mute(muted);
+    return this.update(callId, (c) => ({ ...c, muted })) ?? live.call;
   }
 
   async hangUp(callId: string, reason = "hung up"): Promise<void> {

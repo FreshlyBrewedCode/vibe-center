@@ -150,6 +150,8 @@ export interface Call {
   lastTurn: CallTurnLatency | null;
   /** Set while a spoken request waits on something else; null when it runs (or nothing's asked). */
   waiting: CallWaiting | null;
+  /** Muted from any tab or device: the worker hears silence, the device with the media mutes its mic. */
+  muted: boolean;
 }
 
 const sdpType = z.enum(["offer", "answer", "pranswer", "rollback"]);
@@ -164,6 +166,10 @@ export interface StartCallResponse {
   call: Call;
   answer: { sdp: string; type: "answer"; pcId: string };
 }
+
+/** Call controls from any of the user's tabs or devices (hang-up is `DELETE`). */
+export const CallPatchBody = z.object({ muted: z.boolean() });
+export type CallPatchBody = z.input<typeof CallPatchBody>;
 
 export const IceBody = z.object({
   pcId: z.string().min(1),

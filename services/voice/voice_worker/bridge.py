@@ -22,6 +22,7 @@ App → worker frames:
                                               waiting for approval in the chat, or a busy agent
     {"type": "done", "id", "status": "complete"|"cancelled"|"error", "error"?}
     {"type": "event", "text"}                 proactive event: speak it when the line is quiet
+    {"type": "mute", "muted"}                 the user (un)muted the call, from any device
     {"type": "end", "reason"?}                hang up
 """
 
@@ -92,6 +93,7 @@ class Bridge:
         self._tasks: list[asyncio.Task] = []
         self.hello: dict[str, Any] = {}
         self.on_event: Callable[[str], None] = lambda text: None
+        self.on_mute: Callable[[bool], None] = lambda muted: None
         self.on_end: Callable[[str], None] = lambda reason: None
         self.closed = asyncio.Event()
 
@@ -182,6 +184,9 @@ class Bridge:
         kind = m.get("type")
         if kind == "event":
             self.on_event(str(m.get("text", "")))
+            return
+        if kind == "mute":
+            self.on_mute(bool(m.get("muted")))
             return
         if kind == "end":
             self.on_end(str(m.get("reason") or "hung up"))

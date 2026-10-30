@@ -1,12 +1,15 @@
-"""Small pure pieces: code-fence filtering, the latency log, filler cues."""
+"""Small pure pieces: code-fence filtering, the latency log, filler cues, the mic gate."""
 
 from __future__ import annotations
 
 import json
 
+from pipecat.frames.frames import InputAudioRawFrame
+from pipecat.processors.frame_processor import FrameDirection
+
 from voice_worker.cues import FILLERS, Cues, trim
 from voice_worker.latency import TurnLog, summary
-from voice_worker.talker import CodeFenceFilter, continued_context
+from voice_worker.talker import CodeFenceFilter, MicGate, continued_context
 
 
 def test_code_fences_and_backticks_are_not_spoken():
@@ -55,3 +58,22 @@ def test_trim_cuts_silence_but_keeps_a_little_padding():
     pcm = struct.pack(f"<{len(silence) * 2 + len(loud)}h", *silence, *loud, *silence)
     out = trim(pcm, pad_ms=10)  # 10 ms = 240 samples at 24 kHz
     assert len(out) // 2 == 240 + 240 + 239
+
+
+async def test_mic_gate_silences_input_audio_while_muted():
+    gate = MicGate()
+    pushed = []
+
+    async def push_frame(frame, direction=None):
+        pushed.append(frame)
+
+    gate.push_frame = push_frame
+    loud = b"\x10\x27" * 160
+    await gate.process_frame(
+        InputAudioRawFrame(audio=loud, sample_rate=16000, num_channels=1), FrameDirection.DOWNSTREAM
+    )
+    gate.muted = True
+    await gate.process_frame(
+        InputAudioRawFrame(audio=loud, sample_rate=16000, num_channels=1), FrameDirection.DOWNSTREAM
+    )
+    assert [f.audio for f in pushed] == [loud, bytes(len(loud))]

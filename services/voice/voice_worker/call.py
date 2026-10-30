@@ -24,7 +24,7 @@ from .config import CONFIG, CallConfig
 from .cues import Cues
 from .latency import TurnLog, summary
 from .speech import TTS_SAMPLE_RATE, make_stt, make_tts
-from .talker import BridgeTalker, EndOfTurnStop, OutputTap
+from .talker import BridgeTalker, EndOfTurnStop, MicGate, OutputTap
 
 
 class Call:
@@ -35,6 +35,8 @@ class Call:
         self.stt_url = stt_url  # None: local CPU
         self.tts_url = tts_url
         self.processor: BridgeTalker | None = None
+        self.muted = False
+        self.mic: MicGate | None = None
         self.task: PipelineTask | None = None
         self.started = time.time()
         self._ended = asyncio.Event()
@@ -51,6 +53,7 @@ class Call:
         self.log = TurnLog(CONFIG.log_dir / f"call-{stamp}-{cfg.call_id[:8]}.jsonl", cfg.call_id, meta)
         self.log.listeners.append(self._send_latency)
         bridge.on_event = self._on_event
+        bridge.on_mute = self._on_mute
         bridge.on_end = self.end
 
     def _send_latency(self, rec: dict) -> None:
@@ -60,6 +63,11 @@ class Call:
     def _on_event(self, text: str) -> None:
         if self.processor:
             self.processor.inject_event(text)
+
+    def _on_mute(self, muted: bool) -> None:
+        self.muted = muted
+        if self.mic:
+            self.mic.muted = muted
 
     def end(self, reason: str = "hung up") -> None:
         if self._ended.is_set():
@@ -103,6 +111,8 @@ class Call:
             on_state=lambda s: self.bridge.send({"type": "state", "state": s}),
         )
         self.processor = talker
+        self.mic = MicGate()
+        self.mic.muted = self.muted
         stop = EndOfTurnStop(turn_analyzer=LocalSmartTurnAnalyzerV3(), log=self.log)
         user_agg = LLMUserAggregator(
             LLMContext(),
@@ -113,7 +123,16 @@ class Call:
             ),
         )
         pipeline = Pipeline(
-            [transport.input(), stt, user_agg, talker, tts, transport.output(), OutputTap(log=self.log)]
+            [
+                transport.input(),
+                self.mic,
+                stt,
+                user_agg,
+                talker,
+                tts,
+                transport.output(),
+                OutputTap(log=self.log),
+            ]
         )
         self.task = PipelineTask(
             pipeline,

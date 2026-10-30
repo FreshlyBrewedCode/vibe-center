@@ -1,6 +1,6 @@
 """Pipecat side of the call: replaces the LLM step of a standard Pipecat voice pipeline.
 
-    transport.input -> STT -> user aggregator (Silero VAD + Smart Turn v3)
+    transport.input -> MicGate -> STT -> user aggregator (Silero VAD + Smart Turn v3)
       -> BridgeTalker -> TTS -> transport.output -> OutputTap
 
 - The user aggregator pushes an LLMContextFrame when the user's turn ends; the talker sends the
@@ -28,6 +28,7 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     Frame,
+    InputAudioRawFrame,
     InterruptionFrame,
     LLMContextFrame,
     LLMFullResponseEndFrame,
@@ -462,4 +463,20 @@ class OutputTap(FrameProcessor):
                     log.mark("filler_out")
             elif isinstance(frame, TTSAudioRawFrame) and log.has("prompt_sent"):
                 log.mark("first_audio_out")
+        await self.push_frame(frame, direction)
+
+
+class MicGate(FrameProcessor):
+    """After transport.input(): while the call is muted (from any of the user's tabs or devices,
+    through the app), the microphone's audio is replaced by silence. VAD, STT and turn detection
+    keep their timing but hear nothing, even if the browser holding the media is frozen."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.muted = False
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if self.muted and isinstance(frame, InputAudioRawFrame):
+            frame.audio = bytes(len(frame.audio))
         await self.push_frame(frame, direction)

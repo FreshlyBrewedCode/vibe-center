@@ -74,7 +74,15 @@ async function worker<T = unknown>(path: string, json?: unknown): Promise<T> {
   });
   return (await res.json()) as T;
 }
-type Frame = { type: string; id?: string; text?: string; status?: string; title?: string; reason?: string };
+type Frame = {
+  type: string;
+  id?: string;
+  text?: string;
+  status?: string;
+  title?: string;
+  reason?: string;
+  muted?: boolean;
+};
 const callNow = async () => (await api<Call[]>("/api/voice/calls"))[0];
 const alive = (pid: number) => {
   try {
@@ -343,6 +351,20 @@ describe("a call through the bridge", () => {
     const done = await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));
     expect(done.status).toBe("complete");
     await until(async () => (await callNow())?.waiting === null);
+  });
+
+  test("mute goes through the server: any tab or device, the worker silences the mic", async () => {
+    const ev = events();
+    await ev.opened;
+    const muted = await api<Call>(`/api/voice/calls/${call.id}`, { method: "PATCH", json: { muted: true } });
+    expect(muted.muted).toBe(true);
+    await ev.find((e) => e.type === "call.upsert" && e.call.muted);
+    const lastMute = async () => (await frames()).filter((f) => f.type === "mute").at(-1)?.muted;
+    await until(async () => (await lastMute()) === true);
+    await api(`/api/voice/calls/${call.id}`, { method: "PATCH", json: { muted: false } });
+    await until(async () => (await lastMute()) === false);
+    expect((await raw("/api/voice/calls/nope", { method: "PATCH", json: { muted: true } })).status).toBe(404);
+    ev.ws.close();
   });
 
   test("hang up ends the call, tells the worker and clears presence", async () => {

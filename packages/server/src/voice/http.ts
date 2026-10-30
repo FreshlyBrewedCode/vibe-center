@@ -1,5 +1,7 @@
 import {
+  type Call,
   CallEventBody,
+  CallPatchBody,
   type CallsResponse,
   GPU_SPEECH_ACTIONS,
   type GpuSpeechAction,
@@ -54,6 +56,10 @@ export function createVoiceApi(s: Services): Hono<AuthedEnv> {
   api.patch("/calls/:id/ice", async (c) => {
     await v.ice(c.req.param("id"), IceBody.parse(await c.req.json()));
     return c.body(null, 204);
+  });
+  api.patch("/calls/:id", async (c) => {
+    const body = CallPatchBody.parse(await c.req.json());
+    return c.json<Call>(v.setMuted(c.req.param("id"), body.muted));
   });
   api.delete("/calls/:id", async (c) => {
     await v.hangUp(c.req.param("id"));
