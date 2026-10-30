@@ -1,77 +1,110 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Theme tokens (shadcn/ui, neutral). Components use the semantic names (bg-background,
-   text-muted-foreground, ...), never raw colours, so themes stay consistent. Presence colours
-   are app-specific tokens. */
+/*
+  Theme tokens: the "Nocturne Ash" direction (design/explorations/README.md, §6b). Warm charcoal
+  surfaces, an ivory monochrome accent, hairline borders, and colour only for live states
+  (presence) and the approval card. Dark is the primary theme (`.dark` on <html>, the default in
+  lib/theme.ts); light is the same structure with the 6b light set.
+
+  Components use the shadcn semantic names (bg-background, text-muted-foreground, border-border…)
+  plus the app's own: bg-panel (sidebar / code), border-line-strong, text-presence-*, bg-call,
+  bg-accent-soft, shadow-elev. Never raw colours.
+*/
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.94 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --presence-idle: oklch(0.72 0 0);
-  --presence-thinking: oklch(0.7 0.15 250);
-  --presence-working: oklch(0.72 0.17 150);
-  --presence-waiting: oklch(0.78 0.16 75);
-  --presence-in-call: oklch(0.65 0.2 300);
-  --presence-error: oklch(0.6 0.22 27);
+  color-scheme: light;
+  --radius: 10px;
+  --background: #fbfaf8;
+  --foreground: #1a1917;
+  --panel: #f4f2ee;
+  --card: #ffffff;
+  --card-foreground: #1a1917;
+  --popover: #ffffff;
+  --popover-foreground: #1a1917;
+  --primary: #1a1917;
+  --primary-foreground: #ffffff;
+  --secondary: #ebe8e3;
+  --secondary-foreground: #1a1917;
+  --muted: #ebe8e3;
+  --muted-foreground: #716c64;
+  --accent: #ebe8e3;
+  --accent-foreground: #1a1917;
+  --accent-soft: #edeae5;
+  --destructive: #d9433b;
+  --line: rgba(30, 24, 10, 0.08);
+  --line-strong: rgba(30, 24, 10, 0.15);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: rgba(26, 25, 23, 0.35);
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--line);
+  --user-avatar: #5a5650;
+  --presence-idle: #9a958c;
+  --presence-thinking: #2f6fdb;
+  --presence-working: #1f9d63;
+  --presence-waiting: #c7811a;
+  --presence-in-call: #1f9d63;
+  --presence-error: #d9433b;
+  --call: #1f9d63;
+  --code-kw: #5b41c2;
+  --code-string: #1b7a45;
+  --code-tag: #1d5fbf;
+  --code-number: #b4541a;
+  --elev:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 44px rgba(20, 22, 40, 0.16), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --elev-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --sidebar: oklch(0.18 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  color-scheme: dark;
+  --background: #121110;
+  --foreground: #ece8e1;
+  --panel: #161514;
+  --card: #1c1b19;
+  --card-foreground: #ece8e1;
+  --popover: #1c1b19;
+  --popover-foreground: #ece8e1;
+  --primary: #ece8e1;
+  --primary-foreground: #141311;
+  --secondary: #252321;
+  --secondary-foreground: #ece8e1;
+  --muted: #252321;
+  --muted-foreground: #8f8a82;
+  --accent: #252321;
+  --accent-foreground: #ece8e1;
+  --accent-soft: #2a2825;
+  --destructive: #f26d66;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --ring: rgba(236, 232, 225, 0.35);
+  --user-avatar: #4a4642;
+  --presence-idle: #6d6861;
+  --presence-thinking: #6ea8fe;
+  --presence-working: #45c98a;
+  --presence-waiting: #f0b24a;
+  --presence-in-call: #45c98a;
+  --presence-error: #f26d66;
+  --call: #45c98a;
+  --code-kw: #cdbdff;
+  --code-string: #a9d8b2;
+  --code-tag: #9bc5e6;
+  --code-number: #f0b24a;
+  --elev:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 20px 50px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --elev-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-panel: var(--panel);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -84,8 +117,11 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
@@ -93,12 +129,98 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  --color-user-avatar: var(--user-avatar);
   --color-presence-idle: var(--presence-idle);
   --color-presence-thinking: var(--presence-thinking);
   --color-presence-working: var(--presence-working);
   --color-presence-waiting: var(--presence-waiting);
   --color-presence-in-call: var(--presence-in-call);
   --color-presence-error: var(--presence-error);
+  --color-call: var(--call);
+  --shadow-elev: var(--elev);
+  --shadow-elev-sm: var(--elev-sm);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 6px);
+  --radius-3xl: calc(var(--radius) + 10px);
+}
+
+/* Type scale (6b): Inter; body 14.5px, labels 13px, meta 11.5px; JetBrains Mono for code. */
+@theme {
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Noto Color Emoji";
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-2xs: 11px;
+  --text-2xs--line-height: 1.4;
+  --text-xs: 11.5px;
+  --text-xs--line-height: 1.4;
+  --text-sm: 13px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14.5px;
+  --text-base--line-height: 1.55;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.5;
+  --text-xl: 20px;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 1.2;
+  --default-transition-duration: 160ms;
+  --animate-vc-pulse: vc-pulse 1.6s ease-in-out infinite;
+  --animate-vc-caret: vc-caret 1s steps(1) infinite;
+  --animate-vc-pop: vc-pop 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-vc-sheet: vc-sheet 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-vc-fade: vc-fade 160ms ease-out;
+
+  @keyframes vc-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @keyframes vc-caret {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes vc-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes vc-sheet {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  @keyframes vc-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {
@@ -123,13 +245,58 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss03";
+  }
+  kbd {
+    @apply rounded-[5px] border border-line-strong bg-muted px-1.5 py-px font-sans text-2xs text-muted-foreground;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
-/* Minimal markdown styling for chat messages. */
+@layer utilities {
+  /* Elevation 3: floating surfaces (call card, palette, menus, tooltips). */
+  .elev {
+    box-shadow: var(--elev);
+  }
+  .elev-sm {
+    box-shadow: var(--elev-sm);
+  }
+  /* Scrollbars that match the surfaces instead of the platform's grey. */
+  .vc-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  .vc-noscroll {
+    scrollbar-width: none;
+  }
+  .vc-noscroll::-webkit-scrollbar {
+    display: none;
+  }
+  /* 11px uppercase section labels, 0.08em tracking. */
+  .vc-label {
+    @apply font-medium text-2xs text-muted-foreground uppercase tracking-[0.08em];
+  }
+}
+
+/* Markdown in agent replies: prose at a 72ch measure, code full width on the panel surface. */
 @layer components {
+  .markdown {
+    overflow-wrap: anywhere;
+  }
   .markdown > * + * {
-    @apply mt-2;
+    @apply mt-2.5;
+  }
+  .markdown p,
+  .markdown li {
+    max-width: 72ch;
   }
   .markdown ul {
     @apply list-disc pl-5;
@@ -137,37 +304,60 @@
   .markdown ol {
     @apply list-decimal pl-5;
   }
+  .markdown li + li {
+    @apply mt-1;
+  }
   .markdown a {
-    @apply underline underline-offset-2;
+    @apply underline decoration-line-strong underline-offset-2 hover:decoration-foreground;
   }
   .markdown h1,
   .markdown h2,
-  .markdown h3 {
-    @apply font-semibold;
+  .markdown h3,
+  .markdown h4 {
+    @apply font-semibold tracking-tight;
+  }
+  .markdown h1 {
+    @apply text-lg;
+  }
+  .markdown h2 {
+    @apply text-[15.5px];
+  }
+  .markdown h3,
+  .markdown h4 {
+    @apply text-base;
+  }
+  .markdown hr {
+    @apply border-line;
   }
   .markdown code {
-    @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em];
+    @apply rounded-[6px] bg-muted px-1.5 py-0.5 font-mono text-[0.86em];
   }
   .markdown pre {
-    @apply overflow-x-auto rounded-md bg-muted p-3;
+    @apply overflow-x-auto rounded-xl border border-line bg-panel px-3.5 py-3 font-mono text-[12.5px] leading-[1.55];
   }
   .markdown pre code {
-    @apply bg-transparent p-0;
+    @apply rounded-none bg-transparent p-0 text-[inherit];
   }
   .markdown blockquote {
-    @apply border-l-2 pl-3 text-muted-foreground;
+    @apply border-line-strong border-l-2 pl-3 text-muted-foreground;
   }
   .markdown table {
-    @apply border-collapse text-xs;
+    @apply block max-w-full overflow-x-auto border-collapse text-sm;
   }
   .markdown th,
   .markdown td {
-    @apply border px-2 py-1;
+    @apply border border-line px-2.5 py-1.5 text-left;
+  }
+  .markdown th {
+    @apply bg-panel font-medium;
+  }
+  .markdown img {
+    @apply max-w-full rounded-xl border border-line;
   }
 }
 
-/* Syntax highlighting (code-block.tsx / highlight.js), on the same theme tokens as everything
-   else, so highlighted code looks right in both themes without a separate hljs stylesheet. */
+/* Syntax highlighting (code-block.tsx / highlight.js) on the theme's code tokens, so highlighted
+   code looks right in both themes without a separate hljs stylesheet. */
 @layer components {
   .hljs {
     color: var(--foreground);
@@ -181,8 +371,9 @@
   .hljs-selector-tag,
   .hljs-literal,
   .hljs-section,
-  .hljs-link {
-    color: var(--presence-in-call);
+  .hljs-link,
+  .hljs-meta {
+    color: var(--code-kw);
   }
   .hljs-string,
   .hljs-title,
@@ -195,24 +386,25 @@
   .hljs-variable,
   .hljs-template-tag,
   .hljs-template-variable {
-    color: var(--presence-working);
+    color: var(--code-string);
   }
   .hljs-number,
   .hljs-deletion {
-    color: var(--presence-error);
+    color: var(--code-number);
   }
   .hljs-built_in,
   .hljs-builtin-name,
   .hljs-attr,
   .hljs-function_ .hljs-title,
-  .hljs-class .hljs-title {
-    color: var(--presence-thinking);
+  .hljs-class .hljs-title,
+  .hljs-tag {
+    color: var(--code-tag);
   }
   .hljs-emphasis {
     font-style: italic;
   }
   .hljs-strong {
-    font-weight: bold;
+    font-weight: 600;
   }
 }
 
@@ -221,7 +413,7 @@
   @keyframes jump-highlight {
     0%,
     30% {
-      background-color: color-mix(in oklch, var(--presence-waiting) 20%, transparent);
+      background-color: color-mix(in oklab, var(--presence-waiting) 18%, transparent);
     }
     100% {
       background-color: transparent;
@@ -229,6 +421,6 @@
   }
   .jump-highlight {
     animation: jump-highlight 1.6s ease-out;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
   }
 }
