@@ -139,6 +139,22 @@ async function shoot(browser: import("@playwright/test").Browser): Promise<void>
   await page.waitForTimeout(100);
   await page.screenshot({ path: join(OUT, "settings-harnesses-light.png") });
 
+  // Custom harness env is write-only (masked like MCP secrets): add one, then reopen it to see
+  // the stored value is never echoed back, only its last 4 characters.
+  await page.getByRole("button", { name: "Add custom harness" }).click();
+  await page.waitForTimeout(100);
+  await page.getByLabel("Name").fill("Secret Harness");
+  await page.getByLabel("Command").fill("true");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByLabel("Environment name").fill("API_KEY");
+  await page.getByLabel("Environment value").fill("sk-super-secret-1234567890");
+  await page.getByRole("button", { name: "Add harness" }).click();
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "Edit Secret Harness" }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(OUT, "settings-harness-secret-light.png") });
+  await page.keyboard.press("Escape");
+
   // Dark theme.
   await page.getByRole("link", { name: "Appearance" }).click();
   await page.getByRole("combobox", { name: "Theme" }).click();
