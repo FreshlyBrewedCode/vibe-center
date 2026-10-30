@@ -1,4 +1,9 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ensureDataDir } from "../src/config.ts";
 import { openDb } from "../src/db/index.ts";
 import { createRepos } from "../src/db/repos/index.ts";
 
@@ -86,4 +91,16 @@ describe("database", () => {
     expect(perm?.status).toBe("cancelled");
     expect(perm?.kind === "permission" && perm.data.outcome).toBe("cancelled");
   });
+});
+
+test("a data dir and database created with looser modes are tightened on open", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vc-modes-"));
+  chmodSync(dir, 0o755);
+  const path = join(dir, "vibe-center.db");
+  new Database(path, { create: true }).close();
+  chmodSync(path, 0o644);
+  ensureDataDir(dir);
+  openDb(path).close();
+  expect(statSync(dir).mode & 0o777).toBe(0o700);
+  expect(statSync(path).mode & 0o777).toBe(0o600);
 });

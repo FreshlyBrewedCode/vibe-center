@@ -14,6 +14,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { EventBus } from "../events/bus.ts";
 import type { ProcessTracker } from "../procs.ts";
 import { HttpError } from "./errors.ts";
+import { maskSecrets, resolveSecrets } from "./secrets.ts";
 
 /** Preset harnesses, seeded on first start. Their ids double as stable references. */
 const PRESETS: { id: string; name: string; kind: HarnessKind }[] = [
@@ -56,6 +57,12 @@ export class HarnessService {
     return h;
   }
 
+  /** What it takes to start the harness, env values included. Server side only. */
+  launch(id: string): HarnessLaunchConfig | null {
+    const rec = this.repos.harnesses.get(id);
+    return rec ? launchConfig(rec) : null;
+  }
+
   /** User-defined harnesses are always `custom`; presets are seeded. */
   create(body: HarnessInput): Harness {
     if (!body.command.trim()) throw new HttpError(400, "a custom harness needs a command");
@@ -65,7 +72,7 @@ export class HarnessService {
       kind: "custom",
       command: body.command,
       args: body.args,
-      env: body.env,
+      env: resolveSecrets(body.env, {}),
       builtin: false,
     });
     return this.publish(rec.id);
@@ -76,7 +83,9 @@ export class HarnessService {
     if (cur.kind === "custom" && patch.command !== undefined && !patch.command.trim()) {
       throw new HttpError(400, "a custom harness needs a command");
     }
-    this.repos.harnesses.update(id, patch);
+    const stored = this.repos.harnesses.get(id)?.env ?? {};
+    const { env, ...rest } = patch;
+    this.repos.harnesses.update(id, { ...rest, ...(env ? { env: resolveSecrets(env, stored) } : {}) });
     return this.publish(id);
   }
 
@@ -94,10 +103,11 @@ export class HarnessService {
     const running = this.probing.get(id);
     if (running) return running;
     const h = this.require(id);
+    const launch = this.launch(id)!;
     const p = (async () => {
       this.repos.harnesses.setHealth(id, { ...h.health, status: "unknown", message: "checking…" });
       this.publish(id);
-      const result = await probeHarness(launchConfig(h), { ...opts, tracker: this.tracker });
+      const result = await probeHarness(launch, { ...opts, tracker: this.tracker });
       this.repos.harnesses.setHealth(id, result.health);
       if (result.probe) this.repos.harnesses.setProbe(id, result.probe);
       return this.publish(id);
@@ -135,11 +145,14 @@ export class HarnessService {
   }
 }
 
-export function launchConfig(h: Pick<Harness, "kind" | "command" | "args" | "env">): HarnessLaunchConfig {
+export function launchConfig(
+  h: Pick<HarnessRecord, "kind" | "command" | "args" | "env">,
+): HarnessLaunchConfig {
   return { kind: h.kind, command: h.command, args: h.args, env: h.env };
 }
 
+/** The client's view: env values masked (they may be API keys). */
 function toHarness(rec: HarnessRecord): Harness {
   const cmd = resolveCommand(launchConfig(rec));
-  return { ...rec, resolvedCommand: cmd ? [cmd.command, ...cmd.args] : [] };
+  return { ...rec, env: maskSecrets(rec.env), resolvedCommand: cmd ? [cmd.command, ...cmd.args] : [] };
 }

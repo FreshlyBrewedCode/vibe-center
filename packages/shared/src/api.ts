@@ -77,11 +77,16 @@ export const SendMessageBody = z.object({ text: z.string().trim().min(1).max(100
 export const ReadBody = z.object({ seq: z.number().int().nonnegative() });
 export const PermissionBody = z.object({ optionId: z.string().min(1) });
 
+/** New value, or `{ keep: true }` to keep the stored secret. Keys left out are removed. */
+export const secretValue = z.union([z.string(), z.object({ keep: z.literal(true) })]);
+export type SecretInput = Record<string, z.infer<typeof secretValue>>;
+
 const harnessFields = {
   name: z.string().trim().min(1).max(80),
   command: z.string(),
   args: z.array(z.string()),
-  env: z.record(z.string(), z.string()),
+  /** Write-only values (see SecretMap): `{ keep: true }` keeps a stored one. */
+  env: z.record(z.string().min(1), secretValue),
 };
 export const HarnessBody = z.object({
   ...harnessFields,

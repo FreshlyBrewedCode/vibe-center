@@ -15,7 +15,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { EventBus } from "../events/bus.ts";
 import type { ProcessTracker } from "../procs.ts";
 import { HttpError } from "./errors.ts";
-import { type HarnessService, launchConfig } from "./harnesses.ts";
+import type { HarnessService } from "./harnesses.ts";
 import type { PresenceStore } from "./presence.ts";
 import { TurnRecorder } from "./turns.ts";
 
@@ -287,7 +287,7 @@ export class ChatService {
   }
 
   private runtimeConfig(agent: Agent): RuntimeConfig {
-    const harness = this.harnesses.get(agent.harnessId);
+    const harness = this.harnesses.launch(agent.harnessId);
     if (!harness) throw new HttpError(400, `harness not found: ${agent.harnessId}`, "settings:harnesses");
     return {
       agent: {
@@ -298,7 +298,7 @@ export class ChatService {
         stateDir: dataPaths(this.opts.dataDir).agentState(agent.id),
       },
       options: agent.options,
-      harness: launchConfig(harness),
+      harness,
       adapter: adapters[harness.kind],
     };
   }

@@ -129,6 +129,47 @@ describe("auth", () => {
 describe("chat against the fake harness", () => {
   let agent: AgentView;
 
+  test("custom harness env values are write-only, and still reach the process", async () => {
+    const secret = "sk-secret-value-123456";
+    const created = await api<Harness>("/api/harnesses", {
+      method: "POST",
+      json: {
+        name: "Keyed",
+        command: process.execPath,
+        args: [FAKE_AGENT],
+        env: { API_KEY: secret, MODE: "x" },
+      },
+    });
+    expect(created.env).toEqual({ API_KEY: { hint: "3456" }, MODE: { hint: "" } });
+    const listed = await api<Harness[]>("/api/harnesses");
+    expect(JSON.stringify(listed)).not.toContain(secret);
+    // keep the key, drop MODE
+    const edited = await api<Harness>(`/api/harnesses/${created.id}`, {
+      method: "PATCH",
+      json: { env: { API_KEY: { keep: true } } },
+    });
+    expect(edited.env).toEqual({ API_KEY: { hint: "3456" } });
+    const bad = await rawApi(`/api/harnesses/${created.id}`, {
+      method: "PATCH",
+      json: { env: { NEW: { keep: true } } },
+    });
+    expect(bad.status).toBe(400);
+    const keyed = await api<AgentView>("/api/agents", {
+      method: "POST",
+      json: { name: "Keyed", avatar: { emoji: "🔑", color: "#888888" }, harnessId: created.id, cwd: dataDir },
+    });
+    const r = await app.services.chat.prompt(keyed.id, { text: "printenv API_KEY", source: "user" }).done;
+    expect(r.text).toBe(`API_KEY=${secret}`);
+    await api(`/api/agents/${keyed.id}`, { method: "DELETE" });
+  });
+
+  test("the data dir is 0700 and the database 0600", () => {
+    const mode = (p: string) => statSync(p).mode & 0o777;
+    expect(mode(dataDir)).toBe(0o700);
+    expect(mode(join(dataDir, "vibe-center.db"))).toBe(0o600);
+    expect(mode(join(dataDir, "vibe-center.db-wal"))).toBe(0o600);
+  });
+
   test("presets are seeded; a custom harness and an agent can be created", async () => {
     const harnesses = await api<Harness[]>("/api/harnesses");
     expect(harnesses.map((h) => h.id)).toEqual(expect.arrayContaining(["claude-code", "opencode"]));

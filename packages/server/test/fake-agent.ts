@@ -12,6 +12,7 @@
 //   crash        exits with code 3 mid-turn
 //   whoami       replies with the system prompt, model, mode and prompt blocks it received
 //   history      replies with how many prompts this session has seen
+//   printenv <NAME>  replies "NAME=<value>" from its own environment
 //   mcp-call <tool> <json args>   calls the tool on the session's first MCP server (the app's
 //                gateway), reported as a tool call like Claude Code does (title mcp__vibe__<tool>,
 //                `_meta["claudecode/toolUseId"]`), then replies "Result: <text>"
@@ -258,6 +259,11 @@ const app = acp
       }
       if (lower.includes("whoami")) {
         await say(`SYSTEM=[${s.systemPrompt}] MODEL=[${s.model}] MODE=[${s.mode}] PROMPT=[${text}]`, 2);
+        return stop();
+      }
+      const printenv = /printenv (\w+)/.exec(text);
+      if (printenv?.[1]) {
+        await say(`${printenv[1]}=${process.env[printenv[1]] ?? ""}`, 1);
         return stop();
       }
       if (lower.includes("history")) {

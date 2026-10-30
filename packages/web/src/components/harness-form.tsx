@@ -1,4 +1,4 @@
-import type { Harness, HarnessBody } from "@vibe-center/shared";
+import type { Harness, HarnessBody, SecretInput, SecretMap } from "@vibe-center/shared";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,13 +24,16 @@ function parseArgs(text: string): string[] {
     .filter(Boolean);
 }
 
-function parseEnv(text: string): Record<string, string> {
-  const env: Record<string, string> = {};
+/** Stored values never come back from the API: an empty `KEY=` keeps the stored one. */
+function parseEnv(text: string, stored: SecretMap): SecretInput {
+  const env: SecretInput = {};
   for (const line of text.split("\n").map((l) => l.trim())) {
     if (!line) continue;
     const i = line.indexOf("=");
     if (i < 0) continue;
-    env[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    const key = line.slice(0, i).trim();
+    const value = line.slice(i + 1).trim();
+    env[key] = value === "" && key in stored ? { keep: true } : value;
   }
   return env;
 }
@@ -39,9 +42,9 @@ function toLines(args: string[]): string {
   return args.join("\n");
 }
 
-function envToLines(env: Record<string, string>): string {
-  return Object.entries(env)
-    .map(([k, v]) => `${k}=${v}`)
+function envToLines(env: SecretMap): string {
+  return Object.keys(env)
+    .map((k) => `${k}=`)
     .join("\n");
 }
 
@@ -66,7 +69,12 @@ export function HarnessFormDialog({ harness, trigger }: { harness?: Harness; tri
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const body: HarnessBody = { name, command, args: parseArgs(args), env: parseEnv(env) };
+    const body: HarnessBody = {
+      name,
+      command,
+      args: parseArgs(args),
+      env: parseEnv(env, harness?.env ?? {}),
+    };
     save.mutate(body, {
       onSuccess: () => setOpen(false),
       onError: (err) => toast.error(err.message),
@@ -117,7 +125,7 @@ export function HarnessFormDialog({ harness, trigger }: { harness?: Harness; tri
             </div>
             <div>
               <Label className="mb-1.5 block" htmlFor="harness-env">
-                Environment (KEY=value, one per line)
+                Environment (KEY=value, one per line; saved values stay hidden, leave them empty to keep them)
               </Label>
               <Textarea id="harness-env" rows={3} value={env} onChange={(e) => setEnv(e.target.value)} />
             </div>

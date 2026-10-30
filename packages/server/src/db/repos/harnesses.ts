@@ -1,8 +1,11 @@
 import type { Harness, HarnessHealth, HarnessKind, HarnessProbe } from "@vibe-center/shared";
 import { type Db, json } from "../index.ts";
 
-/** A harness as stored; `resolvedCommand` is filled in by the domain layer from the adapter. */
-export type HarnessRecord = Omit<Harness, "resolvedCommand">;
+/**
+ * A harness as stored, env values in the clear; the domain layer masks them for clients and fills
+ * in `resolvedCommand` from the adapter.
+ */
+export type HarnessRecord = Omit<Harness, "resolvedCommand" | "env"> & { env: Record<string, string> };
 
 interface Row {
   id: string;

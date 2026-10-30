@@ -51,6 +51,13 @@ export interface AgentView extends Agent {
   unread: number;
 }
 
+/**
+ * A secret-bearing map (env vars, HTTP headers) as the client sees it: keys and a hint, never the
+ * value. `hint` is the last 4 characters for values of 12+ characters, else empty. Writes send
+ * a new value or `{ keep: true }` per key (`SecretInput`).
+ */
+export type SecretMap = Record<string, { hint: string }>;
+
 // ---- harnesses --------------------------------------------------------------------------------
 
 export const HARNESS_KINDS = ["claude-code", "opencode", "custom"] as const;
@@ -114,7 +121,8 @@ export interface Harness {
   /** Launch command. For presets an empty command means "use the preset's default". */
   command: string;
   args: string[];
-  env: Record<string, string>;
+  /** Env for the process. Values may be API keys, so they are write-only like MCP secrets. */
+  env: SecretMap;
   /** Presets are seeded and cannot be deleted. */
   builtin: boolean;
   health: HarnessHealth;

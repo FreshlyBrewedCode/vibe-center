@@ -1,7 +1,8 @@
 // Phase 2a contract: MCP servers, per-agent tool selection, memories. Paths, request schemas
 // (validated by the server) and the shapes the server returns.
 import { z } from "zod";
-import type { Id, Timestamp } from "./domain.ts";
+import { secretValue } from "./api.ts";
+import type { Id, SecretMap, Timestamp } from "./domain.ts";
 
 export const mcpPaths = {
   servers: "/api/mcp/servers",
@@ -34,12 +35,6 @@ export interface McpServerStatus {
   checkedAt: Timestamp | null;
 }
 
-/**
- * A secret-bearing map (env vars, HTTP headers) as the client sees it: keys and a hint, never the
- * value. `hint` is the last 4 characters for values of 12+ characters, else empty.
- */
-export type SecretMap = Record<string, { hint: string }>;
-
 export interface McpServerView {
   id: Id;
   /** Also the tool prefix: tools appear to agents as `<name>__<tool>`. */
@@ -66,10 +61,6 @@ const serverName = z
   .min(1)
   .max(32)
   .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, "lowercase letters, digits, single - or _ (e.g. github)");
-
-/** New value, or `{ keep: true }` to keep the stored secret. Keys left out are removed. */
-const secretValue = z.union([z.string(), z.object({ keep: z.literal(true) })]);
-export type SecretInput = Record<string, z.infer<typeof secretValue>>;
 
 const mcpServerFields = {
   name: serverName,
