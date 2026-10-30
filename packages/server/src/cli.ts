@@ -3,6 +3,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import qrcodeTerminal from "qrcode-terminal";
 import { LINK_TOKEN_TTL_MS } from "./auth/auth.ts";
 import { DEFAULT_HTTPS_PORT, DEFAULT_PORT, dataPaths, ensureDataDir, resolveDataDir } from "./config.ts";
 import { type LinkResponse, requestLink, startControlServer } from "./control.ts";
@@ -166,6 +167,7 @@ function printLink(l: LinkResponse): void {
   console.log(`\n  Sign in:  ${l.url}`);
   if (l.localUrl !== l.url) console.log(`  (local)   ${l.localUrl}`);
   console.log(`  The link works once and expires in ${l.expiresInMinutes} minutes.\n`);
+  if (process.stdout.isTTY) qrcodeTerminal.generate(l.url, { small: true });
 }
 
 async function startVite(port: number, apiPort: number): Promise<ChildProcess> {
