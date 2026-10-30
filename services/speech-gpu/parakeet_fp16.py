@@ -1,6 +1,7 @@
-"""Convert the Parakeet-TDT ONNX encoder (fp32, 2.4 GB) to fp16 with fp32 inputs/outputs.
-usage: python parakeet_fp16.py <model-dir>   writes encoder-model.fp16.onnx(+.data) and
-decoder_joint-model.fp16.onnx (a copy of the fp32 decoder: it is small and latency-neutral)"""
+"""Convert a NeMo ONNX encoder (Parakeet-TDT 2.4 GB, Canary 3.1 GB fp32) to fp16 with fp32
+inputs/outputs. usage: python parakeet_fp16.py <model-dir>   writes encoder-model.fp16.onnx(+.data)
+and the decoder under its fp16 name (decoder_joint-model.fp16.onnx for Parakeet,
+decoder-model.fp16.onnx for Canary): a copy of the fp32 decoder, small and latency-neutral."""
 import os, shutil, sys, warnings, onnx
 from onnxconverter_common import float16
 
@@ -22,5 +23,7 @@ for n in m16.graph.node:
                 a.i = F16
 onnx.save_model(m16, os.path.join(d, "encoder-model.fp16.onnx"), save_as_external_data=True,
                 all_tensors_to_one_file=True, location="encoder-model.fp16.onnx.data")
-shutil.copy(os.path.join(d, "decoder_joint-model.onnx"), os.path.join(d, "decoder_joint-model.fp16.onnx"))
+for dec in ("decoder_joint-model", "decoder-model"):
+    if os.path.exists(os.path.join(d, f"{dec}.onnx")):
+        shutil.copy(os.path.join(d, f"{dec}.onnx"), os.path.join(d, f"{dec}.fp16.onnx"))
 print("ok", os.path.getsize(os.path.join(d, "encoder-model.fp16.onnx.data")) >> 20, "MiB")

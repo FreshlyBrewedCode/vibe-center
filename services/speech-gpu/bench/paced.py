@@ -33,7 +33,9 @@ def wav16(pcm24):
 
 def stt(wav):
     bd = uuid.uuid4().hex
-    body = (f'--{bd}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n\r\n'.encode()
+    # language=en as the voice worker sends it (a multilingual Whisper would detect it otherwise)
+    body = (f'--{bd}\r\nContent-Disposition: form-data; name="language"\r\n\r\nen\r\n'
+            f'--{bd}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n\r\n'.encode()
             + wav + f"\r\n--{bd}--\r\n".encode())
     c = http.client.HTTPConnection("127.0.0.1", 8401, timeout=60)
     t0 = time.perf_counter()

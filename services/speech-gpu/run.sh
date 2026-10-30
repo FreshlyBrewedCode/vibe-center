@@ -38,8 +38,10 @@ case "${1:-status}" in
   status)
     for s in "${SERVERS[@]}"; do
       if p=$(pid_of "$s"); then
+        # the server's whole session: the STT server runs its model in a child process
+        pids=" $(ps -o pid= -s "$p" | tr -s ' \n' ' ') "
         mem=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader,nounits |
-              awk -F', ' -v p="$p" '$1 == p { print $2 " MiB VRAM" }')
+              awk -F', ' -v ps="$pids" 'index(ps, " " $1 " ") { m += $2 } END { if (m) print m " MiB VRAM" }')
         echo "$s: running (pid $p${mem:+, $mem})"
       else echo "$s: not running"; fi
     done ;;

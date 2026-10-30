@@ -1,16 +1,20 @@
-"""Fetch the models into the caches (idempotent; quick when already there).
-Parakeet-TDT 0.6B v2 (ONNX export by istupakov) into a real directory, plus our fp16 encoder;
-Kokoro-82M into the Hugging Face cache."""
-import os, subprocess, sys
+"""Fetch what the servers need before they start (idempotent; quick when already there):
+the default STT model (catalog.py) into ~/.cache/gpu-speech/models, unless some catalog model is
+already there, and Kokoro-82M into the Hugging Face cache. Every other STT model is downloaded
+only when someone selects it (the STT server's /v1/stt/models API, Settings -> Voice)."""
+import subprocess, sys, time
 from huggingface_hub import snapshot_download
-from common import PARAKEET_DIR
+import common  # noqa: F401  (logging setup)
+from catalog import DEFAULT_MODEL
+from models import DEFAULT_COMMANDS, ModelManager
+from stt_server import MODELS_DIR
 
-# a real directory, not the HF cache: onnxruntime >= 1.31 refuses external weights behind its symlinks
-snapshot_download("istupakov/parakeet-tdt-0.6b-v2-onnx", local_dir=PARAKEET_DIR,
-                  allow_patterns=["config.json", "vocab.txt", "nemo128.onnx", "encoder-model.onnx*",
-                                  "decoder_joint-model.onnx"])
-if not os.path.exists(os.path.join(PARAKEET_DIR, "encoder-model.fp16.onnx.data")):
-    print("converting the Parakeet encoder to fp16 (~30 s)", flush=True)
-    subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "parakeet_fp16.py"), PARAKEET_DIR], check=True)
+mm = ModelManager(MODELS_DIR)
+mm.migrate_legacy()  # a Parakeet from before the catalog
+if not any(mm.downloaded(m.id) for m in mm.catalog):
+    print(f"downloading the default STT model {DEFAULT_MODEL}", flush=True)
+    m = mm.model(DEFAULT_MODEL)
+    subprocess.run(DEFAULT_COMMANDS.fetch(m, mm.dir(m.id)), check=True)
+    (mm.dir(m.id) / ".complete").write_text(time.strftime("%Y-%m-%d %H:%M:%S"))
 snapshot_download("hexgrad/Kokoro-82M", allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/*"])
 print("models ready", flush=True)

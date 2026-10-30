@@ -5,7 +5,7 @@
 #   speech.sh down           stop the servers, close the tunnels (km-pc stays awake: `gpu sleep`)
 #   speech.sh restart        down + up (after changing server code)
 #   speech.sh logs [stt|tts] [lines]
-# STT: http://127.0.0.1:8401  POST /v1/audio/transcriptions   (Parakeet-TDT 0.6B v2)
+# STT: http://127.0.0.1:8401  POST /v1/audio/transcriptions   (the active model; /v1/stt/models)
 # TTS: http://127.0.0.1:8402  POST /v1/audio/speech → s16le 24 kHz (Kokoro-82M)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -14,7 +14,8 @@ REMOTE_DIR=vibe-center/gpu-speech           # relative to the gpu user's home
 PORTS=(8401 8402)
 CTL="${XDG_RUNTIME_DIR:-/tmp}/gpu-speech-tunnel.sock"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=accept-new)
-FILES=(env.sh run.sh requirements.txt common.py prepare.py parakeet_fp16.py stt_server.py tts_server.py)
+FILES=(env.sh run.sh requirements.txt requirements-whisper.txt common.py catalog.py models.py fetch.py prepare.py
+       parakeet_fp16.py stt_backend.py stt_server.py tts_server.py)
 
 remote() { gpu ssh "$@"; }
 tunnel_open() { [ -S "$CTL" ] && ssh -S "$CTL" -O check "gpu@$HOST" 2>/dev/null; }
@@ -41,7 +42,7 @@ up() {
   if ! grep -q 'up (NixOS)' <<<"$st"; then gpu wake; st=$(gpu status || true); fi
   who=$(sed -n 's/^local user: //p' <<<"$st")
   if [ -n "$who" ] && [ "$who" != none ] && [ "${1:-}" != --force ]; then
-    echo "$who is using km-pc locally; not loading models onto their GPU (~2.5 GB VRAM)." >&2
+    echo "$who is using km-pc locally; not loading models onto their GPU (~3 GB VRAM)." >&2
     echo "Ask them, then rerun with --force." >&2
     exit 1
   fi
@@ -51,9 +52,8 @@ up() {
   remote "cd ~/$REMOTE_DIR && h=\$(sha1sum requirements.txt env.sh | sha1sum | cut -c1-12) &&
     if [ \"\$(cat .venv/.req-hash 2>/dev/null)\" != \"\$h\" ]; then
       echo 'setting up the venv'; ./env.sh setup && echo \$h > .venv/.req-hash; fi &&
-    if [ ! -e ~/.cache/gpu-speech/parakeet-tdt-0.6b-v2-onnx/encoder-model.fp16.onnx.data ] ||
-       [ ! -e .models-ready ]; then
-      ./env.sh python prepare.py && touch .models-ready; fi &&
+    if [ ! -e .models-ready-v2 ]; then
+      ./env.sh python prepare.py && touch .models-ready-v2; fi &&
     ./run.sh start"
   open_tunnel
   printf 'waiting for the models to load'
