@@ -8,10 +8,21 @@ export const mcpPaths = {
   servers: "/api/mcp/servers",
   server: (id: string) => `/api/mcp/servers/${id}`,
   serverRefresh: (id: string) => `/api/mcp/servers/${id}/refresh`,
+  /** POST: start an OAuth sign-in (`McpOAuthStartBody` → `McpOAuthStartResponse`); DELETE: disconnect. */
+  serverOAuth: (id: string) => `/api/mcp/servers/${id}/oauth`,
+  /** POST from the redirect page (`McpOAuthCallbackBody` → `McpOAuthCallbackResponse`). */
+  oauthCallback: "/api/mcp/oauth/callback",
   agentTools: (agentId: string) => `/api/agents/${agentId}/tools`,
   memories: "/api/memories",
   memory: (id: string) => `/api/memories/${id}`,
 } as const;
+
+/**
+ * Where the authorization server sends the browser back: a page of the web app (not an /api
+ * route, because the SameSite=Strict session cookie isn't sent on that cross-site navigation;
+ * the page posts the result with it). The redirect URI is `<the app's origin>` + this path.
+ */
+export const MCP_OAUTH_REDIRECT_PATH = "/oauth/mcp/callback";
 
 /** Id of the app's own MCP server (memory, conversation search, agents). */
 export const BUILTIN_SERVER_ID = "builtin";
@@ -28,7 +39,8 @@ export interface McpToolInfo {
 }
 
 export interface McpServerStatus {
-  state: "unknown" | "connecting" | "connected" | "error" | "disabled";
+  /** `needs_auth`: an HTTP server that wants an OAuth sign-in (none yet, or it expired/was revoked). */
+  state: "unknown" | "connecting" | "connected" | "error" | "disabled" | "needs_auth";
   message: string | null;
   /** Upstream server's own name/version from `initialize`. */
   serverInfo: { name: string; version: string } | null;
@@ -46,12 +58,39 @@ export interface McpServerView {
   cwd: string | null;
   url: string | null;
   headers: SecretMap;
+  /** HTTP servers only (null otherwise): OAuth settings and the connection, never the tokens. */
+  oauth: McpOAuthView | null;
   enabled: boolean;
   builtin: boolean;
   tools: McpToolInfo[];
   status: McpServerStatus;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/**
+ * One OAuth connection per server, shared by every agent. The tokens stay on the server; this is
+ * what the UI may know about them.
+ */
+export interface McpOAuthView {
+  /** Pre-registered client (optional; empty = dynamic client registration). */
+  clientId: string | null;
+  /** Write-only, like other secrets. */
+  clientSecret: { hint: string } | null;
+  /** Scopes to request instead of the server's own choice (space-separated). */
+  scopes: string | null;
+  /** Holding tokens (they may still be refreshed or fail on the next use). */
+  connected: boolean;
+  /** Who signed in, from the ID token or a JWT access token, if the server says. */
+  account: string | null;
+  grantedScopes: string[];
+  /** Access token expiry; refreshed automatically when a refresh token exists. */
+  expiresAt: Timestamp | null;
+  refreshable: boolean;
+  /** The authorization server (its issuer) of the last sign-in or attempt. */
+  issuer: string | null;
+  /** How the app identifies itself to the authorization server. */
+  registration: "preregistered" | "dynamic" | null;
 }
 
 /** Server names double as tool prefixes, so they are short slugs without `__`. */
@@ -71,6 +110,14 @@ const mcpServerFields = {
   cwd: z.string().trim().min(1).nullable(),
   url: z.url().nullable(),
   headers: z.record(z.string().min(1), secretValue),
+  /** OAuth overrides for HTTP servers without dynamic client registration; null = none. */
+  oauth: z
+    .object({
+      clientId: z.string().trim().min(1).max(500).nullable(),
+      clientSecret: secretValue.nullable(),
+      scopes: z.string().trim().min(1).max(1000).nullable(),
+    })
+    .nullable(),
   enabled: z.boolean(),
 };
 
@@ -83,6 +130,7 @@ export const McpServerBody = z
     cwd: mcpServerFields.cwd.default(null),
     url: mcpServerFields.url.default(null),
     headers: mcpServerFields.headers.default({}),
+    oauth: mcpServerFields.oauth.default(null),
     enabled: mcpServerFields.enabled.default(true),
   })
   .refine((b) => (b.transport === "stdio" ? !!b.command : !!b.url), {
@@ -94,6 +142,47 @@ export const McpServerPatchBody = z.object(mcpServerFields).partial();
 export type McpServerPatchBody = z.input<typeof McpServerPatchBody>;
 
 export type McpServersResponse = McpServerView[];
+
+// ---- OAuth sign-in ----------------------------------------------------------------------------
+
+/** A same-app path to land on afterwards: `/…` but not `//…` or `/\…` (no open redirect). */
+export const appPath = z
+  .string()
+  .max(2000)
+  .refine(
+    (p) => /^\/(?![/\\])/.test(p) && ![...p].some((c) => c.charCodeAt(0) < 0x20),
+    "must be a path of this app",
+  );
+
+export const McpOAuthStartBody = z.object({
+  /** Where the redirect page goes after the sign-in (full-page redirect, e.g. on a phone). */
+  returnTo: appPath.default("/settings/mcp"),
+  /** Opened in a popup/new tab: the redirect page closes itself instead of navigating. */
+  popup: z.boolean().default(false),
+});
+export type McpOAuthStartBody = z.input<typeof McpOAuthStartBody>;
+export interface McpOAuthStartResponse {
+  /** Open this in the browser (the authorization server's consent page). */
+  authorizationUrl: string;
+  /** The redirect URI the app registered/uses (for pre-registering a client). */
+  redirectUri: string;
+}
+
+/** What the authorization server put in the redirect's query, posted by the redirect page. */
+export const McpOAuthCallbackBody = z.object({
+  state: z.string().min(1).max(500),
+  code: z.string().min(1).max(4000).optional(),
+  iss: z.string().max(2000).optional(),
+  error: z.string().max(200).optional(),
+  errorDescription: z.string().max(2000).optional(),
+});
+export type McpOAuthCallbackBody = z.input<typeof McpOAuthCallbackBody>;
+export interface McpOAuthCallbackResponse {
+  serverId: Id;
+  serverName: string;
+  returnTo: string;
+  popup: boolean;
+}
 
 // ---- per-agent tool selection -----------------------------------------------------------------
 

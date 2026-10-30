@@ -1,6 +1,10 @@
 import {
   AgentToolsPatchBody,
   type AgentToolsResponse,
+  McpOAuthCallbackBody,
+  type McpOAuthCallbackResponse,
+  McpOAuthStartBody,
+  type McpOAuthStartResponse,
   McpServerBody,
   McpServerPatchBody,
   type McpServersResponse,
@@ -39,6 +43,24 @@ export function createMcpApi(s: Services): Hono<AuthedEnv> {
   });
   api.post("/mcp/servers/:id/refresh", async (c) =>
     c.json<McpServerView>(await s.mcp.refresh(c.req.param("id"))),
+  );
+
+  // OAuth sign-in for HTTP servers. The redirect URI is on the origin this device uses (its
+  // session cookie lives there); `sameOrigin` already refused a foreign Origin.
+  api.post("/mcp/servers/:id/oauth", async (c) => {
+    const origin = c.req.header("origin") ?? s.publicUrl ?? new URL(c.req.url).origin;
+    const body = McpOAuthStartBody.parse(await c.req.json().catch(() => ({})));
+    return c.json<McpOAuthStartResponse>(
+      await s.mcp.startOAuth(c.req.param("id"), c.get("device").id, origin, body),
+    );
+  });
+  api.delete("/mcp/servers/:id/oauth", async (c) =>
+    c.json<McpServerView>(await s.mcp.disconnectOAuth(c.req.param("id"))),
+  );
+  api.post("/mcp/oauth/callback", async (c) =>
+    c.json<McpOAuthCallbackResponse>(
+      await s.mcp.completeOAuth(McpOAuthCallbackBody.parse(await c.req.json()), c.get("device").id),
+    ),
   );
 
   api.get("/agents/:id/tools", (c) => c.json<AgentToolsResponse>(s.mcp.agentTools(c.req.param("id"))));

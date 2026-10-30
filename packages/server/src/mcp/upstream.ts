@@ -2,12 +2,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServerStatus, McpToolInfo } from "@vibe-center/shared";
 import { expandHome } from "../config.ts";
 import type { McpServerRecord } from "../db/repos/mcp-servers.ts";
 import type { ToolResult } from "./builtin/index.ts";
+import { NeedsSignInError } from "./oauth.ts";
 
 const CONNECT_TIMEOUT_MS = 30_000;
 /** Upstream tool calls can be long (builds, browsers); progress notifications extend it. */
@@ -16,6 +17,8 @@ const CALL_TIMEOUT_MS = 10 * 60_000;
 export interface UpstreamEvents {
   status(serverId: string, status: McpServerStatus): void;
   tools(serverId: string, tools: McpToolInfo[]): void;
+  /** The fetch for an HTTP server's transport (OAuth adds its bearer token); undefined = plain. */
+  fetchFor?(record: McpServerRecord): FetchLike | undefined;
 }
 
 /** A connected client to one configured server plus what's needed to report its health. */
@@ -66,7 +69,10 @@ class Upstream {
       });
       return client;
     } catch (e) {
-      if (!this.closed) this.report({ state: "error", message: this.withStderr(errorText(e)) });
+      // A needed sign-in was reported as `needs_auth` by the OAuth layer already.
+      if (!this.closed && !(e instanceof NeedsSignInError)) {
+        this.report({ state: "error", message: this.withStderr(errorText(e)) });
+      }
       throw e;
     }
   }
@@ -90,12 +96,14 @@ class Upstream {
     }
     const url = new URL(r.url ?? "");
     const requestInit = { headers: r.headers };
+    const fetch = this.events.fetchFor?.(r);
     try {
-      return await this.connectWith(make(), new StreamableHTTPClientTransport(url, { requestInit }));
+      return await this.connectWith(make(), new StreamableHTTPClientTransport(url, { requestInit, fetch }));
     } catch (e) {
+      if (e instanceof NeedsSignInError) throw e;
       // Older servers speak the deprecated HTTP+SSE transport.
       try {
-        return await this.connectWith(make(), new SSEClientTransport(url, { requestInit }));
+        return await this.connectWith(make(), new SSEClientTransport(url, { requestInit, fetch }));
       } catch {
         throw e;
       }

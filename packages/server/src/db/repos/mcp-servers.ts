@@ -12,6 +12,8 @@ export interface McpServerRecord {
   cwd: string | null;
   url: string | null;
   headers: Record<string, string>;
+  /** OAuth overrides; the connection itself is in `McpOAuthRepo`. */
+  oauth: McpOAuthConfig | null;
   enabled: boolean;
   tools: McpToolInfo[];
   status: McpServerStatus;
@@ -19,9 +21,15 @@ export interface McpServerRecord {
   updatedAt: number;
 }
 
+export interface McpOAuthConfig {
+  clientId: string | null;
+  clientSecret: string | null;
+  scopes: string | null;
+}
+
 export type McpServerFields = Pick<
   McpServerRecord,
-  "name" | "transport" | "command" | "args" | "env" | "cwd" | "url" | "headers" | "enabled"
+  "name" | "transport" | "command" | "args" | "env" | "cwd" | "url" | "headers" | "oauth" | "enabled"
 >;
 
 interface Row {
@@ -34,6 +42,7 @@ interface Row {
   cwd: string | null;
   url: string | null;
   headers: string;
+  oauth: string | null;
   enabled: number;
   tools: string | null;
   status: string | null;
@@ -58,6 +67,7 @@ const toRecord = (r: Row): McpServerRecord => ({
   cwd: r.cwd,
   url: r.url,
   headers: json.parse(r.headers, {}),
+  oauth: json.parse(r.oauth, null),
   enabled: r.enabled === 1,
   tools: json.parse(r.tools, []),
   status: json.parse(r.status, UNKNOWN_STATUS),
@@ -91,9 +101,9 @@ export class McpServerRepo {
     const now = Date.now();
     this.db
       .query(
-        `INSERT INTO mcp_servers (id, name, transport, command, args, env, cwd, url, headers, enabled,
+        `INSERT INTO mcp_servers (id, name, transport, command, args, env, cwd, url, headers, oauth, enabled,
                                   created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -105,6 +115,7 @@ export class McpServerRepo {
         f.cwd,
         f.url,
         json.str(f.headers),
+        f.oauth ? json.str(f.oauth) : null,
         f.enabled ? 1 : 0,
         now,
         now,
@@ -116,7 +127,7 @@ export class McpServerRepo {
     this.db
       .query(
         `UPDATE mcp_servers SET name = ?, transport = ?, command = ?, args = ?, env = ?, cwd = ?, url = ?,
-                                headers = ?, enabled = ?, updated_at = ?
+                                headers = ?, oauth = ?, enabled = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
@@ -128,6 +139,7 @@ export class McpServerRepo {
         f.cwd,
         f.url,
         json.str(f.headers),
+        f.oauth ? json.str(f.oauth) : null,
         f.enabled ? 1 : 0,
         Date.now(),
         id,
@@ -145,6 +157,34 @@ export class McpServerRepo {
 
   delete(id: string): void {
     this.db.query("DELETE FROM mcp_servers WHERE id = ?").run(id);
+  }
+}
+
+/**
+ * One OAuth connection per server (`mcp/oauth.ts` owns the shape). Holds tokens: only the OAuth
+ * code reads it, and nothing of it goes into views or events.
+ */
+export class McpOAuthRepo {
+  constructor(private readonly db: Db) {}
+
+  get<T>(serverId: string): T | null {
+    const r = this.db
+      .query<{ state: string }, [string]>("SELECT state FROM mcp_oauth WHERE server_id = ?")
+      .get(serverId);
+    return r ? json.parse<T | null>(r.state, null) : null;
+  }
+
+  set(serverId: string, state: unknown): void {
+    this.db
+      .query(
+        `INSERT INTO mcp_oauth (server_id, state, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (server_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at`,
+      )
+      .run(serverId, json.str(state), Date.now());
+  }
+
+  delete(serverId: string): void {
+    this.db.query("DELETE FROM mcp_oauth WHERE server_id = ?").run(serverId);
   }
 }
 

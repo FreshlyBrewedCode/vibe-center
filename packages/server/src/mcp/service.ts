@@ -2,6 +2,10 @@ import {
   type AgentToolGroup,
   type AgentToolsPatchBody,
   BUILTIN_SERVER_ID,
+  type McpOAuthCallbackBody,
+  type McpOAuthCallbackResponse,
+  type McpOAuthStartBody,
+  type McpOAuthStartResponse,
   type McpServerInput,
   type McpServerPatchBody,
   type McpServerView,
@@ -10,7 +14,7 @@ import {
   type MemoryPatchBody,
 } from "@vibe-center/shared";
 import type { Repos } from "../db/repos/index.ts";
-import type { McpServerFields, McpServerRecord } from "../db/repos/mcp-servers.ts";
+import type { McpOAuthConfig, McpServerFields, McpServerRecord } from "../db/repos/mcp-servers.ts";
 import { HttpError } from "../domain/errors.ts";
 import { maskSecrets, resolveSecrets } from "../domain/secrets.ts";
 import type { EventBus } from "../events/bus.ts";
@@ -18,6 +22,7 @@ import { type BuiltinTool, builtinTools, toolInfo } from "./builtin/index.ts";
 import type { BuiltinDeps } from "./builtin/types.ts";
 import { ToolCatalog } from "./catalog.ts";
 import { McpGateway } from "./gateway.ts";
+import { McpOAuth } from "./oauth.ts";
 import { CallRecorder } from "./recorder.ts";
 import { UpstreamPool } from "./upstream.ts";
 
@@ -28,6 +33,7 @@ import { UpstreamPool } from "./upstream.ts";
 export class McpService {
   readonly gateway: McpGateway;
   readonly catalog: ToolCatalog;
+  readonly oauth: McpOAuth;
   private readonly upstreams: UpstreamPool;
   private readonly recorder: CallRecorder;
   private builtins: Map<string, BuiltinTool> | null = null;
@@ -38,7 +44,22 @@ export class McpService {
     private readonly repos: Repos,
     private readonly bus: EventBus,
   ) {
+    this.oauth = new McpOAuth(repos, {
+      needsAuth: (id, message) => {
+        const cur = this.repos.mcpServers.get(id);
+        if (cur?.status.state === "needs_auth" && cur.status.message === message) return;
+        this.repos.mcpServers.setStatus(id, {
+          state: "needs_auth",
+          message,
+          serverInfo: null,
+          checkedAt: Date.now(),
+        });
+        this.publish(id);
+      },
+      changed: (id) => this.publish(id),
+    });
     this.upstreams = new UpstreamPool({
+      fetchFor: (r) => this.oauth.fetchFor(r),
       status: (id, status) => {
         this.repos.mcpServers.setStatus(id, status);
         this.publish(id);
@@ -109,6 +130,7 @@ export class McpService {
       ...this.endpointFields(input),
       env: resolveSecrets(input.env, {}),
       headers: resolveSecrets(input.headers, {}),
+      oauth: oauthConfig(input.transport, input.oauth, null),
     };
     const rec = this.repos.mcpServers.insert(fields);
     this.publish(rec.id);
@@ -134,7 +156,10 @@ export class McpService {
       ...this.endpointFields(merged),
       env: patch.env ? resolveSecrets(patch.env, cur.env) : cur.env,
       headers: patch.headers ? resolveSecrets(patch.headers, cur.headers) : cur.headers,
+      oauth: patch.oauth !== undefined ? oauthConfig(merged.transport, patch.oauth, cur.oauth) : cur.oauth,
     };
+    // Tokens are bound to the server URL and the client they were issued to.
+    if (fields.url !== cur.url || fields.oauth?.clientId !== cur.oauth?.clientId) this.oauth.reset(id);
     const rec = this.repos.mcpServers.update(id, fields)!;
     void this.upstreams.drop(id).then(() => {
       if (rec.enabled) return this.upstreams.refresh(rec).catch(() => {});
@@ -150,6 +175,9 @@ export class McpService {
     const cur = this.require(id);
     if (cur.transport === "builtin") throw new HttpError(400, "the built-in server can't be removed");
     await this.upstreams.drop(id);
+    // Revoke the sign-in on the way out, but don't let a slow authorization server hold this up.
+    await Promise.race([this.oauth.disconnect(cur).catch(() => {}), Bun.sleep(3000)]);
+    this.oauth.reset(id);
     this.repos.mcpServers.delete(id);
     this.bus.publish({ type: "mcp.server.deleted", serverId: id });
     this.toolsChanged(null);
@@ -165,6 +193,44 @@ export class McpService {
     return this.get(id);
   }
 
+  // ---- OAuth sign-in ----------------------------------------------------------------------------
+
+  /** Start a sign-in from this device; `origin` is the app's origin as the device reaches it. */
+  async startOAuth(
+    id: string,
+    deviceId: string,
+    origin: string,
+    body: Required<McpOAuthStartBody>,
+  ): Promise<McpOAuthStartResponse> {
+    const rec = this.require(id);
+    if (!rec.enabled) throw new HttpError(400, "enable the server first");
+    return this.oauth.start(rec, { deviceId, origin, ...body });
+  }
+
+  /** The redirect page's POST: exchange the code, then connect and discover the tools. */
+  async completeOAuth(body: McpOAuthCallbackBody, deviceId: string): Promise<McpOAuthCallbackResponse> {
+    const done = await this.oauth.complete(body, deviceId, (sid) => this.repos.mcpServers.get(sid));
+    const rec = this.require(done.serverId);
+    await this.upstreams.refresh(rec).catch(() => {});
+    return { ...done, serverName: rec.name };
+  }
+
+  /** Revoke and forget the tokens; the server needs a sign-in again. */
+  async disconnectOAuth(id: string): Promise<McpServerView> {
+    const rec = this.require(id);
+    if (rec.transport !== "http") throw new HttpError(400, "OAuth sign-in is for HTTP servers");
+    await this.upstreams.drop(id);
+    await this.oauth.disconnect(rec);
+    this.repos.mcpServers.setStatus(id, {
+      state: "needs_auth",
+      message: "Signed out.",
+      serverInfo: null,
+      checkedAt: Date.now(),
+    });
+    this.publish(id);
+    return this.get(id);
+  }
+
   private view(s: McpServerRecord): McpServerView {
     const builtin = s.transport === "builtin";
     return {
@@ -177,6 +243,7 @@ export class McpService {
       cwd: s.cwd,
       url: s.url,
       headers: maskSecrets(s.headers),
+      oauth: this.oauth.view(s),
       enabled: builtin || s.enabled,
       builtin,
       tools: this.catalog.toolsOf(s),
@@ -279,4 +346,25 @@ export class McpService {
     this.repos.memories.delete(id);
     this.bus.publish({ type: "memory.deleted", memoryId: id });
   }
+}
+
+/** The stored OAuth overrides from a request's (`clientSecret: { keep: true }` keeps the stored one). */
+function oauthConfig(
+  transport: "stdio" | "http",
+  input: McpServerInput["oauth"],
+  stored: McpOAuthConfig | null,
+): McpOAuthConfig | null {
+  if (transport !== "http" || !input) return null;
+  const secret = input.clientSecret;
+  const clientSecret =
+    secret === null ? null : typeof secret === "string" ? secret : (stored?.clientSecret ?? null);
+  if (secret !== null && typeof secret !== "string" && !stored?.clientSecret) {
+    throw new HttpError(400, "no stored client secret to keep");
+  }
+  if (!input.clientId && !input.scopes) return null;
+  return {
+    clientId: input.clientId,
+    clientSecret: input.clientId ? clientSecret : null,
+    scopes: input.scopes,
+  };
 }
