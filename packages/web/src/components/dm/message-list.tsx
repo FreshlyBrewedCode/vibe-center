@@ -184,7 +184,10 @@ function layout(messages: Message[]): Row[] {
 /** A hairline divider with a centred label (dates; sessions use the same shape). */
 export function Divider({ label, title, testId }: { label: string; title?: string; testId?: string }) {
   return (
-    <div data-testid={testId} className="flex items-center gap-3 px-4 py-3 text-muted-foreground text-xs sm:px-10">
+    <div
+      data-testid={testId}
+      className="flex items-center gap-3 px-4 py-3 text-muted-foreground text-xs sm:px-10"
+    >
       <div className="h-px flex-1 bg-line" />
       <span title={title} className="shrink-0">
         {label}

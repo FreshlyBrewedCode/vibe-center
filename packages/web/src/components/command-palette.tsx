@@ -109,14 +109,20 @@ export function CommandPalette() {
             {matchingAgents.map((a) => {
               const s = statusLine(a);
               return (
-                <CommandItem key={a.id} value={a.id} onSelect={() => go("/agents/$agentId", { agentId: a.id })}>
+                <CommandItem
+                  key={a.id}
+                  value={a.id}
+                  onSelect={() => go("/agents/$agentId", { agentId: a.id })}
+                >
                   <AgentAvatar avatar={a.avatar} presence={a.presence} size={24} surface="var(--card)" />
                   <span className="font-medium">{a.name}</span>
                   <span className={cn("min-w-0 truncate text-sm", s.className)}>
                     {a.presence === "idle" && a.description ? a.description : s.text}
                   </span>
                   <span className="flex-1" />
-                  {a.unread > 0 && <Badge className="h-[18px] min-w-[18px] px-1.5 text-2xs">{a.unread}</Badge>}
+                  {a.unread > 0 && (
+                    <Badge className="h-[18px] min-w-[18px] px-1.5 text-2xs">{a.unread}</Badge>
+                  )}
                 </CommandItem>
               );
             })}
@@ -183,7 +189,10 @@ export function CommandPalette() {
                       {renderSnippet(h.snippet)}
                     </span>
                     <time className="shrink-0 text-muted-foreground text-xs tabular-nums">
-                      {new Date(h.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(h.message.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </time>
                   </CommandItem>
                 );

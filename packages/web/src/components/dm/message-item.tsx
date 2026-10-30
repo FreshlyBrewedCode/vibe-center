@@ -212,7 +212,10 @@ function Row({
             ) : (
               <AgentAvatar avatar={agent.avatar} size={28} />
             )}
-            <span className="truncate font-semibold text-sm" style={relayColor ? { color: relayColor } : undefined}>
+            <span
+              className="truncate font-semibold text-sm"
+              style={relayColor ? { color: relayColor } : undefined}
+            >
               {name}
             </span>
             <time className="shrink-0 text-muted-foreground text-xs tabular-nums">
@@ -236,7 +239,15 @@ function Row({
         )}
         <div
           className={cn(showHeader && "mt-1", INDENT)}
-          style={relay ? { borderLeft: `2px solid ${relayColor ?? "var(--line-strong)"}`, marginLeft: 38, paddingLeft: 12 } : undefined}
+          style={
+            relay
+              ? {
+                  borderLeft: `2px solid ${relayColor ?? "var(--line-strong)"}`,
+                  marginLeft: 38,
+                  paddingLeft: 12,
+                }
+              : undefined
+          }
         >
           {children}
         </div>
@@ -248,7 +259,12 @@ function Row({
 /** The card surface for thinking, plans and tool calls: hairline, 12px radius, fit to content. */
 function ActivityCard({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("w-fit max-w-full overflow-hidden rounded-xl border border-line bg-card text-sm", className)}>
+    <div
+      className={cn(
+        "w-fit max-w-full overflow-hidden rounded-xl border border-line bg-card text-sm",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -326,10 +342,18 @@ function ToolCard({ message: m, fold }: { message: Extract<Message, { kind: "too
     <div
       data-testid="tool-call"
       data-status={d.toolStatus}
-      className={cn("max-w-full overflow-hidden border-line bg-card text-sm", fold === "single" ? "" : "sm:max-w-[720px]", shape)}
+      className={cn(
+        "max-w-full overflow-hidden border-line bg-card text-sm",
+        fold === "single" ? "" : "sm:max-w-[720px]",
+        shape,
+      )}
     >
       <details className="group">
-        <ActivitySummary icon={<Icon className="size-3.5 shrink-0 text-muted-foreground" />} verb={verb} trailing={status}>
+        <ActivitySummary
+          icon={<Icon className="size-3.5 shrink-0 text-muted-foreground" />}
+          verb={verb}
+          trailing={status}
+        >
           <span className="truncate font-mono text-[12px] text-muted-foreground">{title}</span>
         </ActivitySummary>
         <div className="border-line border-t px-3.5 py-2.5">
@@ -413,12 +437,18 @@ function PermissionCard({
         pending ? "border-presence-waiting/40" : "border-line",
       )}
       style={
-        pending ? { boxShadow: "0 0 0 3px color-mix(in oklab, var(--presence-waiting) 10%, transparent)" } : undefined
+        pending
+          ? { boxShadow: "0 0 0 3px color-mix(in oklab, var(--presence-waiting) 10%, transparent)" }
+          : undefined
       }
     >
       <div className="flex items-center gap-2 px-4 pt-3.5 text-sm">
-        <ShieldAlert className={cn("size-4 shrink-0", pending ? "text-presence-waiting" : "text-muted-foreground")} />
-        <span className="font-semibold">{pending ? `${agentName} needs approval` : `${agentName} asked for approval`}</span>
+        <ShieldAlert
+          className={cn("size-4 shrink-0", pending ? "text-presence-waiting" : "text-muted-foreground")}
+        />
+        <span className="font-semibold">
+          {pending ? `${agentName} needs approval` : `${agentName} asked for approval`}
+        </span>
       </div>
       <code className="mx-4 mt-2.5 block overflow-x-auto whitespace-pre-wrap rounded-[8px] bg-background px-3 py-2 font-mono text-[12.5px] leading-snug">
         {d.title}

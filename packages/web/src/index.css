@@ -250,12 +250,17 @@
   kbd {
     @apply rounded-[5px] border border-line-strong bg-muted px-1.5 py-px font-sans text-2xs text-muted-foreground;
   }
+  /* Motion off under reduced-motion: these must beat every component's own durations, hence
+     !important (the usual accessibility idiom). */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: must override every component's animation */
       animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: same */
       animation-iteration-count: 1 !important;
+      /* biome-ignore lint/complexity/noImportantStyles: same */
       transition-duration: 0.01ms !important;
     }
   }

@@ -31,8 +31,8 @@ function DesktopHome() {
             {empty ? "Create your first agent" : "Pick an agent"}
           </h1>
           <p className="text-muted-foreground text-sm">
-            Each agent is a persona on a coding harness (Claude Code, OpenCode, any ACP agent). Chat in its
-            DM like with a colleague, or call it.
+            Each agent is a persona on a coding harness (Claude Code, OpenCode, any ACP agent). Chat in its DM
+            like with a colleague, or call it.
           </p>
         </div>
         {empty ? (
@@ -103,7 +103,9 @@ function MobileAgentList() {
                 <AgentAvatar avatar={a.avatar} presence={a.presence} size={48} />
                 <span className="flex min-w-0 flex-1 flex-col border-line border-b pb-3 leading-tight">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className={cn("truncate text-[16.5px]", a.unread ? "font-semibold" : "font-medium")}>
+                    <span
+                      className={cn("truncate text-[16.5px]", a.unread ? "font-semibold" : "font-medium")}
+                    >
                       {a.name}
                     </span>
                   </span>

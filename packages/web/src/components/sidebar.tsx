@@ -122,7 +122,9 @@ function Rail() {
                 <TooltipContent side="right" className="flex items-center gap-2 px-3 py-2 text-[12.5px]">
                   <span className="font-semibold">{a.name}</span>
                   <span className={cn("max-w-[220px] truncate", s.className)}>{s.text}</span>
-                  {a.unread > 0 && <Badge className="h-[18px] min-w-[18px] px-1.5 text-2xs">{a.unread}</Badge>}
+                  {a.unread > 0 && (
+                    <Badge className="h-[18px] min-w-[18px] px-1.5 text-2xs">{a.unread}</Badge>
+                  )}
                 </TooltipContent>
               </Tooltip>
             </li>
@@ -280,7 +282,9 @@ function Expanded() {
                 />
                 <span className="min-w-0 flex-1 leading-tight">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className={cn("truncate text-[13.5px]", a.unread ? "font-semibold" : "font-medium")}>
+                    <span
+                      className={cn("truncate text-[13.5px]", a.unread ? "font-semibold" : "font-medium")}
+                    >
                       {a.name}
                     </span>
                   </span>

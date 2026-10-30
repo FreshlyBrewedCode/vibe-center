@@ -75,7 +75,9 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("flex shrink-0 items-start gap-2 px-3 pt-3 pb-2 sm:px-8 sm:pt-7 sm:pb-3", className)}>
+    <header
+      className={cn("flex shrink-0 items-start gap-2 px-3 pt-3 pb-2 sm:px-8 sm:pt-7 sm:pb-3", className)}
+    >
       <Link
         to={backTo}
         aria-label={backLabel}

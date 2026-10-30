@@ -131,7 +131,7 @@ function MemoryItem({
       <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
         {owner ? (
           <span className="flex items-center gap-1">
-            <AgentAvatar avatar={owner.avatar} size="sm" /> {owner.name}
+            <AgentAvatar avatar={owner.avatar} size={16} /> {owner.name}
           </span>
         ) : (
           <span className="flex items-center gap-1">

@@ -236,7 +236,10 @@ function Transcript({ view, count, className }: { view: CallView; count: number;
   return (
     <div data-testid="call-transcript" className={cn("space-y-1 text-[12.5px]", className)}>
       {lines.map((m) => (
-        <p key={m.id} className={cn("truncate", m.role === "user" ? "text-muted-foreground" : "text-foreground")}>
+        <p
+          key={m.id}
+          className={cn("truncate", m.role === "user" ? "text-muted-foreground" : "text-foreground")}
+        >
           <span className="mr-1.5 text-muted-foreground">{m.role === "user" ? "You" : view.agent.name}</span>
           {m.text}
           {(m.status === "cancelled" || m.data?.interrupted) && (
@@ -283,7 +286,10 @@ function Diagnostics({ view, className }: { view: CallView; className?: string }
   if (call.speech) parts.push(`speech ${speechLabel(call.speech.stt)} / ${speechLabel(call.speech.tts)}`);
   if (!parts.length) return null;
   return (
-    <p className={cn("truncate text-2xs text-muted-foreground", className)} title="You stopped speaking → first reply audio">
+    <p
+      className={cn("truncate text-2xs text-muted-foreground", className)}
+      title="You stopped speaking → first reply audio"
+    >
       {parts.join(" · ")}
     </p>
   );
@@ -453,11 +459,19 @@ function CallStrip({ view, onOpen }: { view: CallView; onOpen: () => void }) {
               permission ? "bg-presence-waiting/15 text-presence-waiting" : "bg-call/15 text-call",
             )}
           >
-            {permission ? <ShieldAlert className="size-4" /> : <AudioLines className="size-4 animate-vc-pulse" />}
+            {permission ? (
+              <ShieldAlert className="size-4" />
+            ) : (
+              <AudioLines className="size-4 animate-vc-pulse" />
+            )}
           </span>
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block truncate font-semibold text-sm">
-              {permission ? "Waiting for your approval" : <span data-testid="call-state">{stateLabel[view.state]}</span>}
+              {permission ? (
+                "Waiting for your approval"
+              ) : (
+                <span data-testid="call-state">{stateLabel[view.state]}</span>
+              )}
             </span>
             <span className="block truncate text-muted-foreground text-xs">
               {call && <CallTimer since={call.startedAt} />}
@@ -511,7 +525,11 @@ function CallSheet({ view, onClose }: { view: CallView; onClose: () => void }) {
                 : "border-call/30 bg-call/10 text-call",
             )}
           >
-            {permission ? <ShieldAlert className="size-4" /> : <AudioLines className="size-4 animate-vc-pulse" />}
+            {permission ? (
+              <ShieldAlert className="size-4" />
+            ) : (
+              <AudioLines className="size-4 animate-vc-pulse" />
+            )}
             {permission ? "Waiting for approval" : stateLabel[view.state]}
           </span>
         </div>
@@ -520,7 +538,10 @@ function CallSheet({ view, onClose }: { view: CallView; onClose: () => void }) {
             <p className="text-center text-muted-foreground">Say something. {agent.name} is listening.</p>
           )}
           {lines.map((m) => (
-            <p key={m.id} className={m.role === "user" ? "text-right text-muted-foreground" : "text-foreground"}>
+            <p
+              key={m.id}
+              className={m.role === "user" ? "text-right text-muted-foreground" : "text-foreground"}
+            >
               {m.text}
               {(m.status === "cancelled" || m.data?.interrupted) && (
                 <span className="text-muted-foreground"> (interrupted)</span>

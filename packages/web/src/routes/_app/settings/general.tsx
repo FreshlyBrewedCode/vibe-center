@@ -68,7 +68,9 @@ function NotificationsToggle() {
     <Card className="flex items-center justify-between gap-4 p-4">
       <div className="min-w-0">
         <p className="font-medium text-sm">Notify when an agent finishes or needs approval</p>
-        <p className="mt-0.5 text-muted-foreground text-xs">Only while its DM isn't the one you're looking at.</p>
+        <p className="mt-0.5 text-muted-foreground text-xs">
+          Only while its DM isn't the one you're looking at.
+        </p>
         {permission === "denied" && (
           <p className="mt-1.5 text-destructive text-xs">
             Blocked in your browser's site settings; allow notifications for this site to turn it on.

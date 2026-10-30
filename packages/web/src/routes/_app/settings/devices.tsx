@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { Device } from "@vibe-center/shared";
-import { Check, Pencil, X } from "lucide-react";
+import { Check, MonitorSmartphone, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AddDeviceDialog } from "@/components/add-device-dialog";
@@ -15,28 +15,42 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDevices, useRenameDevice, useRevokeDevice } from "@/lib/queries";
-import { Section } from "../settings";
+import { cn } from "@/lib/utils";
+import { Card, Section } from "../settings";
 
 export const Route = createFileRoute("/_app/settings/devices")({ component: Devices });
 
 function Devices() {
   const devices = useDevices();
   return (
-    <Section title="Devices">
+    <Section
+      title="Devices"
+      description="Every browser signed in to this server. Pair another one with a QR code."
+    >
       <div className="flex justify-end">
         <AddDeviceDialog />
       </div>
-      <ul className="divide-y rounded-lg border">
-        {devices.data?.map((d) => (
-          <li key={d.id} data-testid="device" className="flex items-center gap-3 p-3 text-sm">
-            <DeviceName device={d} />
-            {!d.revokedAt && <RevokeButton device={d} />}
-          </li>
-        ))}
-      </ul>
+      <Card>
+        <ul className="divide-y divide-line">
+          {devices.data?.map((d) => (
+            <li
+              key={d.id}
+              data-testid="device"
+              className={cn("flex items-center gap-3 p-3.5 text-sm", d.revokedAt && "opacity-60")}
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <MonitorSmartphone className="size-4" />
+              </span>
+              <DeviceName device={d} />
+              {!d.revokedAt && <RevokeButton device={d} />}
+            </li>
+          ))}
+        </ul>
+      </Card>
     </Section>
   );
 }
@@ -68,15 +82,15 @@ function DeviceName({ device }: { device: Device }) {
           aria-label="New device name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="h-7 text-sm"
+          className="h-8 text-sm"
           maxLength={100}
         />
-        <Button type="submit" size="icon-xs" variant="ghost" aria-label="Save name">
+        <Button type="submit" size="icon-sm" variant="ghost" aria-label="Save name">
           <Check className="size-3.5" />
         </Button>
         <Button
           type="button"
-          size="icon-xs"
+          size="icon-sm"
           variant="ghost"
           aria-label="Cancel"
           onClick={() => {
@@ -92,13 +106,17 @@ function DeviceName({ device }: { device: Device }) {
 
   return (
     <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-1 font-medium">
+      <div className="flex items-center gap-1.5 font-medium">
         <span className="truncate">{device.name}</span>
-        {device.current && <span className="text-muted-foreground text-xs">(this device)</span>}
+        {device.current && (
+          <Badge variant="outline" className="text-2xs">
+            this device
+          </Badge>
+        )}
         <button
           type="button"
           aria-label="Rename device"
-          className="text-muted-foreground hover:text-foreground"
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           onClick={() => {
             // Re-sync in case another device renamed it since this component mounted.
             setName(device.name);
