@@ -66,6 +66,8 @@ interface OAuthState {
   account?: string | null;
   /** Scopes a 403 insufficient_scope challenge asked for; the next sign-in requests them too. */
   scopeHint?: string;
+  /** `resource_name` from the resource metadata (e.g. "T3 Code"); null = it has none. */
+  resourceName?: string | null;
 }
 
 interface StoredTokens {
@@ -234,8 +236,11 @@ export class McpOAuth {
       grantedScopes: t?.scope ? t.scope.split(/\s+/).filter(Boolean) : [],
       expiresAt: t?.expiresAt ?? null,
       refreshable: !!t?.refresh_token,
+      expired: !!t && !t.refresh_token && t.expiresAt !== null && t.expiresAt < Date.now(),
       issuer: s.issuer ?? null,
       registration: r.oauth?.clientId ? "preregistered" : s.client ? "dynamic" : null,
+      resourceName: s.resourceName ?? null,
+      revocable: !!s.metadata?.revocation_endpoint,
     };
   }
 
@@ -322,7 +327,13 @@ export class McpOAuth {
 
     // 5. The client: pre-registered, else the stored dynamic registration, else register now.
     let client: OAuthClientInformationMixed;
-    const next: OAuthState = { ...state, issuer, metadata, resource: prm.resource };
+    const next: OAuthState = {
+      ...state,
+      issuer,
+      metadata,
+      resource: prm.resource,
+      resourceName: typeof prm.resource_name === "string" ? prm.resource_name.slice(0, 100) : null,
+    };
     if (r.oauth?.clientId) {
       if (state.preregisteredIssuer && state.preregisteredIssuer !== issuer) {
         throw new HttpError(
@@ -570,8 +581,11 @@ export class McpOAuth {
     };
     return async (url, init) => {
       let t = this.load(r.id).tokens;
-      if (t?.refresh_token && t.expiresAt !== null && t.expiresAt - REFRESH_AHEAD_MS < Date.now()) {
-        t = await this.refresh(r, t);
+      if (t && t.expiresAt !== null && t.expiresAt - REFRESH_AHEAD_MS < Date.now()) {
+        // Without a refresh token (some servers issue none, e.g. T3 Code) an expired sign-in
+        // just needs a new one; no point sending it.
+        if (t.refresh_token) t = await this.refresh(r, t);
+        else if (t.expiresAt < Date.now()) this.signInGone(r, "The sign-in expired. Sign in again.");
       }
       let res = await send(url, init, t);
       if (res.status === 401) {
@@ -582,7 +596,9 @@ export class McpOAuth {
           if (res.status !== 401) return res;
           await res.body?.cancel().catch(() => {});
         }
-        this.needsSignIn(r, t ? "The server rejected the sign-in. Sign in again." : "Sign in to connect.");
+        if (t) this.signInGone(r, "The sign-in expired or was revoked. Sign in again.");
+        void this.describe(r, res);
+        this.needsSignIn(r, "Sign in to connect.");
       }
       if (res.status === 403) {
         const p = extractWWWAuthenticateParams(res);
@@ -598,6 +614,28 @@ export class McpOAuth {
       }
       return res;
     };
+  }
+
+  /** The tokens are dead (rejected, or expired with no way to refresh): forget them. */
+  private signInGone(r: McpServerRecord, message: string): never {
+    const s = this.load(r.id);
+    if (s.tokens) this.save(r.id, { ...s, tokens: undefined, account: undefined });
+    this.needsSignIn(r, message);
+  }
+
+  /**
+   * Before any sign-in: read the resource metadata (a GET, nothing registered) for the name the
+   * server gives itself, so Settings can say what the sign-in is for.
+   */
+  private async describe(r: McpServerRecord, res: Response): Promise<void> {
+    if (this.load(r.id).resourceName !== undefined) return;
+    try {
+      const { resourceMetadataUrl } = extractWWWAuthenticateParams(res);
+      if (resourceMetadataUrl) requireSecure(resourceMetadataUrl, "resource metadata URL");
+      const prm = await discoverOAuthProtectedResourceMetadata(r.url!, { resourceMetadataUrl }, oauthFetch);
+      const name = typeof prm.resource_name === "string" ? prm.resource_name.slice(0, 100) : null;
+      this.save(r.id, { ...this.load(r.id), resourceName: name });
+    } catch {}
   }
 
   private needsSignIn(r: McpServerRecord, message: string): never {

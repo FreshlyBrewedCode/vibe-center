@@ -384,3 +384,73 @@ describe("MCP OAuth", () => {
     expect(secureUrl("javascript:alert(1)")).toBe(false);
   });
 });
+
+describe("MCP OAuth without refresh tokens (like T3 Code)", () => {
+  let t3: OAuthTestServer;
+  let v: McpServerView;
+
+  beforeAll(async () => {
+    t3 = startOAuthMcpServer(0, { t3Like: true });
+    v = await api<McpServerView>("/api/mcp/servers", {
+      method: "POST",
+      json: { name: "t3", transport: "http", url: t3.url },
+    });
+    await api(`/api/agents/${agent.id}/tools`, { method: "PATCH", json: { serverId: v.id, enabled: true } });
+  });
+  afterAll(() => t3.stop());
+
+  test("the server's name is known before the sign-in; both scopes of its metadata are requested", async () => {
+    const s = await until(async () => {
+      const x = await server(v.id);
+      return x.status.state === "needs_auth" && !!x.oauth?.resourceName && x;
+    });
+    expect(s.oauth).toMatchObject({ resourceName: "T3 Code", connected: false });
+    expect(t3.stats.registrations).toBe(0);
+    await signInTo(v.id);
+    expect(t3.stats.lastAuthorize?.scope).toBe("orchestration:read orchestration:operate");
+    const c = await until(async () => {
+      const x = await server(v.id);
+      return x.status.state === "connected" && x;
+    });
+    expect(c.oauth).toMatchObject({ refreshable: false, revocable: false, expired: false });
+    expect(await ask("mcp-call t3__whoami {}")).toContain("you are tester");
+  });
+
+  test("a rejected token: no refresh grant is tried, the server needs sign-in, the token is dropped", async () => {
+    t3.expireAccessTokens();
+    expect(await ask("mcp-call t3__whoami {}")).toContain('The "t3" MCP server needs sign-in');
+    const s = await server(v.id);
+    expect(s.status).toMatchObject({
+      state: "needs_auth",
+      message: "The sign-in expired or was revoked. Sign in again.",
+    });
+    expect(s.oauth?.connected).toBe(false);
+    expect(t3.stats.refreshes).toBe(0);
+  });
+
+  test("a token past its expiry shows as needing sign-in at once and isn't sent", async () => {
+    await signInTo(v.id);
+    await until(async () => (await server(v.id)).status.state === "connected");
+    const state = app.services.repos.mcpOAuth.get<Record<string, unknown>>(v.id)!;
+    app.services.repos.mcpOAuth.set(v.id, {
+      ...state,
+      tokens: { ...(state.tokens as object), expiresAt: Date.now() - 1000 },
+    });
+    expect((await server(v.id)).status).toMatchObject({
+      state: "needs_auth",
+      message: "The sign-in expired. Sign in again.",
+    });
+    const calls = t3.stats.mcpCalls;
+    expect(await ask("mcp-call t3__whoami {}")).toContain("needs sign-in");
+    expect(t3.stats.mcpCalls).toBe(calls);
+    expect(t3.stats.refreshes).toBe(0);
+  });
+
+  test("disconnect without a revocation endpoint forgets the token here", async () => {
+    await signInTo(v.id);
+    await until(async () => (await server(v.id)).status.state === "connected");
+    const s = await api<McpServerView>(`/api/mcp/servers/${v.id}/oauth`, { method: "DELETE" });
+    expect(s.oauth).toMatchObject({ connected: false, revocable: false });
+    expect(t3.stats.revocations).toBe(0);
+  });
+});

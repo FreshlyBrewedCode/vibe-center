@@ -8,6 +8,7 @@ import {
   type McpOAuthStartResponse,
   type McpServerInput,
   type McpServerPatchBody,
+  type McpServerStatus,
   type McpServerView,
   type Memory,
   type MemoryBody,
@@ -233,6 +234,11 @@ export class McpService {
 
   private view(s: McpServerRecord): McpServerView {
     const builtin = s.transport === "builtin";
+    const oauth = this.oauth.view(s);
+    // An expired sign-in without a refresh token is over, used or not.
+    const status: McpServerStatus = oauth?.expired
+      ? { ...s.status, state: "needs_auth", message: "The sign-in expired. Sign in again." }
+      : s.status;
     return {
       id: s.id,
       name: s.name,
@@ -243,7 +249,7 @@ export class McpService {
       cwd: s.cwd,
       url: s.url,
       headers: maskSecrets(s.headers),
-      oauth: this.oauth.view(s),
+      oauth,
       enabled: builtin || s.enabled,
       builtin,
       tools: this.catalog.toolsOf(s),
@@ -255,7 +261,7 @@ export class McpService {
             checkedAt: null,
           }
         : s.enabled
-          ? s.status
+          ? status
           : { ...s.status, state: "disabled" },
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,

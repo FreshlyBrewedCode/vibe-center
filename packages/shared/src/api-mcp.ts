@@ -87,10 +87,16 @@ export interface McpOAuthView {
   /** Access token expiry; refreshed automatically when a refresh token exists. */
   expiresAt: Timestamp | null;
   refreshable: boolean;
+  /** Expired and not refreshable: the next use flips the server to `needs_auth`. */
+  expired: boolean;
   /** The authorization server (its issuer) of the last sign-in or attempt. */
   issuer: string | null;
   /** How the app identifies itself to the authorization server. */
   registration: "preregistered" | "dynamic" | null;
+  /** The name the server gives itself in its resource metadata (e.g. "T3 Code"), once known. */
+  resourceName: string | null;
+  /** Disconnect revokes at the authorization server (RFC 7009); else it only forgets the token here. */
+  revocable: boolean;
 }
 
 /** Server names double as tool prefixes, so they are short slugs without `__`. */

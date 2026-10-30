@@ -22,6 +22,11 @@ export interface OAuthTestOptions {
   iss: boolean;
   /** Offer dynamic client registration. */
   registration: boolean;
+  /**
+   * Like T3 Code: no refresh tokens, no revocation endpoint, no scope in the 401 challenge,
+   * two scopes in the resource metadata and a `resource_name`.
+   */
+  t3Like: boolean;
 }
 
 interface Client {
@@ -72,9 +77,16 @@ const b64url = (b: Buffer) => b.toString("base64url");
 const token = () => b64url(randomBytes(24));
 const S256 = (v: string) => b64url(createHash("sha256").update(v).digest());
 const SCOPE = "mcp:tools";
+const T3_SCOPES = ["orchestration:read", "orchestration:operate"];
 
 export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = {}): OAuthTestServer {
-  const options: OAuthTestOptions = { expiresIn: 3600, iss: true, registration: true, ...opts };
+  const options: OAuthTestOptions = {
+    expiresIn: 3600,
+    iss: true,
+    registration: true,
+    t3Like: false,
+    ...opts,
+  };
   const clients = new Map<string, Client>();
   const codes = new Map<string, Code>();
   const grants = new Map<string, Grant>();
@@ -102,9 +114,9 @@ export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = 
   function issueTokens(grantId: string) {
     const g = grants.get(grantId)!;
     const at = token();
-    const rt = token();
+    const rt = options.t3Like ? undefined : token();
     access.set(at, { grant: grantId, expiresAt: Date.now() + options.expiresIn * 1000 });
-    refresh.set(rt, grantId);
+    if (rt) refresh.set(rt, grantId);
     // An unsigned ID token, so the client can show who signed in.
     const idToken = [
       b64url(Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" }))),
@@ -171,8 +183,9 @@ export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = 
         return json({
           resource: resource(),
           authorization_servers: [issuer()],
-          scopes_supported: [SCOPE],
+          scopes_supported: options.t3Like ? T3_SCOPES : [SCOPE],
           bearer_methods_supported: ["header"],
+          ...(options.t3Like ? { resource_name: "T3 Code" } : {}),
         });
       }
       if (p === "/mcp") {
@@ -184,7 +197,7 @@ export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = 
           return new Response("unauthorized", {
             status: 401,
             headers: {
-              "www-authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp", scope="${SCOPE}"${err}`,
+              "www-authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"${options.t3Like ? "" : `, scope="${SCOPE}"`}${err}`,
             },
           });
         }
@@ -202,13 +215,17 @@ export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = 
           issuer: issuer(),
           authorization_endpoint: `${issuer()}/authorize`,
           token_endpoint: `${issuer()}/token`,
-          revocation_endpoint: `${issuer()}/revoke`,
+          ...(options.t3Like ? {} : { revocation_endpoint: `${issuer()}/revoke` }),
           ...(options.registration ? { registration_endpoint: `${issuer()}/register` } : {}),
           response_types_supported: ["code"],
-          grant_types_supported: ["authorization_code", "refresh_token"],
+          grant_types_supported: options.t3Like
+            ? ["authorization_code"]
+            : ["authorization_code", "refresh_token"],
           code_challenge_methods_supported: ["S256"],
-          token_endpoint_auth_methods_supported: ["none", "client_secret_basic", "client_secret_post"],
-          scopes_supported: [SCOPE, "offline_access"],
+          token_endpoint_auth_methods_supported: options.t3Like
+            ? ["none"]
+            : ["none", "client_secret_basic", "client_secret_post"],
+          scopes_supported: options.t3Like ? T3_SCOPES : [SCOPE, "offline_access"],
           authorization_response_iss_parameter_supported: options.iss,
         });
       }
@@ -282,7 +299,7 @@ export function startOAuthMcpServer(port = 0, opts: Partial<OAuthTestOptions> = 
           stats.tokens++;
           return issueTokens(id);
         }
-        if (grantType === "refresh_token") {
+        if (grantType === "refresh_token" && !options.t3Like) {
           const rt = form.get("refresh_token") ?? "";
           const id = refresh.get(rt);
           const g = id ? grants.get(id) : undefined;
