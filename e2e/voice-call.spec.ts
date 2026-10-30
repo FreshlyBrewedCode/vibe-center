@@ -10,6 +10,7 @@ import type {
   MessagesResponse,
   VoiceStatus,
 } from "../packages/shared/src/index.ts";
+import { dataDir, FAKE_AGENT, mintLink, ROOT } from "./helpers.ts";
 
 // A whole voice call through the real app: the managed Python worker (services/voice), WebRTC
 // from headless Chromium whose microphone plays a scripted WAV (services/voice/tests/scenario.py),
@@ -19,10 +20,7 @@ import type {
 // Speech uses whatever the voice settings point at: the GPU servers if `speech.sh up` ran,
 // else the worker's CPU fallbacks. Skip with VC_E2E_VOICE=0.
 
-const ROOT = join(import.meta.dirname, "..");
 const VOICE = join(ROOT, "services/voice");
-const FAKE_AGENT = join(ROOT, "packages/server/test/fake-agent.ts");
-const dataDir = process.env.VC_E2E_DATA_DIR!;
 const OUT = join(ROOT, "test-results/voice");
 const realAgent = process.env.VC_E2E_VOICE_AGENT === "claude";
 const chromiumPath =
@@ -35,16 +33,6 @@ interface Scenario {
   wav: string;
   duration: number;
   timeline: { id: string; start: number; end?: number; text: string }[];
-}
-
-function mintLink(): string {
-  const out = execFileSync("bun", ["packages/server/src/cli.ts", "link", "--data-dir", dataDir], {
-    cwd: ROOT,
-    encoding: "utf8",
-  });
-  const m = /(http:\/\/localhost:\d+\/login#token=\S+)/.exec(out);
-  if (!m?.[1]) throw new Error(`no link in output:\n${out}`);
-  return m[1];
 }
 
 /** Records when the page's mic and the agent's audio are audible (same clock as the server). */
