@@ -2,7 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentView, Harness, Message, MessagesResponse, ServerEvent } from "@vibe-center/shared";
+import type {
+  AgentView,
+  DeviceResponse,
+  DevicesResponse,
+  Harness,
+  Message,
+  MessagesResponse,
+  MintLinkResponse,
+  ServerEvent,
+} from "@vibe-center/shared";
+import { LINK_TOKEN_TTL_MS, UI_LINK_RATE_LIMIT } from "../src/auth/auth.ts";
 import { dataPaths } from "../src/config.ts";
 import { requestLink, startControlServer } from "../src/control.ts";
 import { type AppServer, createServer } from "../src/server.ts";
@@ -23,7 +33,8 @@ async function api<T>(path: string, init: RequestInit & { json?: unknown } = {})
 
 function rawApi(path: string, init: RequestInit & { json?: unknown } = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  if (cookie) headers.set("cookie", cookie);
+  // A test impersonating another device passes its own `cookie` header; don't clobber it.
+  if (cookie && !headers.has("cookie")) headers.set("cookie", cookie);
   if (init.json !== undefined) headers.set("content-type", "application/json");
   return fetch(`${base}${path}`, {
     ...init,
@@ -33,10 +44,12 @@ function rawApi(path: string, init: RequestInit & { json?: unknown } = {}): Prom
 }
 
 /** Collects WS events; `until` resolves when a matching one has arrived. */
-function connectWs() {
+function connectWs(deviceCookie = cookie) {
   const events: ServerEvent[] = [];
   const waiters: { pred: (e: ServerEvent) => boolean; resolve: (e: ServerEvent) => void }[] = [];
-  const ws = new WebSocket(`${base.replace("http", "ws")}/ws`, { headers: { cookie } } as never);
+  const ws = new WebSocket(`${base.replace("http", "ws")}/ws`, {
+    headers: { cookie: deviceCookie },
+  } as never);
   ws.onmessage = (m) => {
     const e = JSON.parse(String(m.data)) as ServerEvent;
     events.push(e);
@@ -123,6 +136,122 @@ describe("auth", () => {
       headers: { origin: "https://evil.example" },
     });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("device links (Settings → Devices → Add device)", () => {
+  let cookie2 = "";
+
+  test("minting one needs a device session and a same-origin request", async () => {
+    const noSession = await fetch(`${base}/api/devices/links`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(noSession.status).toBe(401);
+
+    const crossOrigin = await rawApi("/api/devices/links", {
+      method: "POST",
+      json: {},
+      headers: { origin: "https://evil.example" },
+    });
+    expect(crossOrigin.status).toBe(403);
+  });
+
+  test("a minted link pre-assigns a name, is single-use, and pairing shows live", async () => {
+    // Sign in a second device to mint the link from, distinct from the suite's main device.
+    const { url } = await requestLink(dataPaths(dataDir).controlSocket);
+    const exch = await rawApi("/api/auth/exchange", {
+      method: "POST",
+      json: { token: url.split("#token=")[1]!, deviceName: "Laptop" },
+    });
+    cookie2 = exch.headers.get("set-cookie")!.split(";")[0]!;
+    const ws2 = connectWs(cookie2);
+    await ws2.opened;
+
+    const before = Date.now();
+    const mint = await api<MintLinkResponse>("/api/devices/links", {
+      method: "POST",
+      json: { label: "Phone" },
+      headers: { cookie: cookie2 },
+    });
+    expect(mint.url).toContain("/login#token=");
+    expect(mint.label).toBe("Phone");
+    expect(mint.expiresAt).toBeGreaterThan(before);
+    expect(mint.expiresAt).toBeLessThanOrEqual(before + LINK_TOKEN_TTL_MS + 1000);
+
+    const token = mint.url.split("#token=")[1]!;
+    const redeemed = await rawApi("/api/auth/exchange", { method: "POST", json: { token } });
+    expect(redeemed.status).toBe(200);
+    const { device } = (await redeemed.json()) as { device: { name: string } };
+    expect(device.name).toBe("Phone"); // the pre-assigned label, not a UA-derived name
+
+    const paired = await ws2.until<Extract<ServerEvent, { type: "device.link.paired" }>>(
+      (e) => e.type === "device.link.paired" && e.linkId === mint.id,
+    );
+    expect(paired.device.name).toBe("Phone");
+
+    const list = await api<DevicesResponse>("/api/devices", { headers: { cookie: cookie2 } });
+    expect(list.some((d) => d.name === "Phone")).toBe(true);
+
+    // single-use: the same token doesn't redeem twice
+    const again = await rawApi("/api/auth/exchange", { method: "POST", json: { token } });
+    expect(again.status).toBe(401);
+  });
+
+  test("cancelling an outstanding link invalidates it", async () => {
+    const mint = await api<MintLinkResponse>("/api/devices/links", {
+      method: "POST",
+      json: {},
+      headers: { cookie: cookie2 },
+    });
+    await api(`/api/devices/links/${mint.id}`, { method: "DELETE", headers: { cookie: cookie2 } });
+
+    const res = await rawApi("/api/auth/exchange", {
+      method: "POST",
+      json: { token: mint.url.split("#token=")[1]! },
+    });
+    expect(res.status).toBe(401);
+
+    const cancelAgain = await rawApi(`/api/devices/links/${mint.id}`, {
+      method: "DELETE",
+      headers: { cookie: cookie2 },
+    });
+    expect(cancelAgain.status).toBe(404);
+  });
+
+  test("renaming a device", async () => {
+    const me = await api<{ device: { id: string } }>("/api/auth/me", { headers: { cookie: cookie2 } });
+    const renamed = await api<DeviceResponse>(`/api/devices/${me.device.id}`, {
+      method: "PATCH",
+      json: { name: "My Laptop" },
+      headers: { cookie: cookie2 },
+    });
+    expect(renamed.name).toBe("My Laptop");
+  });
+
+  test("rate-limits minting past a few per minute", async () => {
+    const { url } = await requestLink(dataPaths(dataDir).controlSocket);
+    const exch = await rawApi("/api/auth/exchange", {
+      method: "POST",
+      json: { token: url.split("#token=")[1]!, deviceName: "RateLimited" },
+    });
+    const cookie3 = exch.headers.get("set-cookie")!.split(";")[0]!;
+
+    for (let i = 0; i < UI_LINK_RATE_LIMIT; i++) {
+      const res = await rawApi("/api/devices/links", {
+        method: "POST",
+        json: {},
+        headers: { cookie: cookie3 },
+      });
+      expect(res.status).toBe(201);
+    }
+    const limited = await rawApi("/api/devices/links", {
+      method: "POST",
+      json: {},
+      headers: { cookie: cookie3 },
+    });
+    expect(limited.status).toBe(429);
   });
 });
 

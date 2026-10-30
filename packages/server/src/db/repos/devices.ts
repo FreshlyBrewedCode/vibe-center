@@ -58,6 +58,10 @@ export class DeviceRepo {
     this.db.query("UPDATE devices SET last_seen_at = ? WHERE id = ?").run(Date.now(), id);
   }
 
+  rename(id: string, name: string): boolean {
+    return this.db.query("UPDATE devices SET name = ? WHERE id = ?").run(name, id).changes > 0;
+  }
+
   revoke(id: string): boolean {
     return (
       this.db

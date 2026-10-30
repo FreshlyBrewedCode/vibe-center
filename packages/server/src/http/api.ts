@@ -6,6 +6,8 @@ import {
   type ApiError,
   AuthExchangeBody,
   type ConversationResponse,
+  DevicePatchBody,
+  type DeviceResponse,
   type DevicesResponse,
   HarnessBody,
   type HarnessesResponse,
@@ -14,6 +16,8 @@ import {
   type MeResponse,
   MessagesQuery,
   type MessagesResponse,
+  MintLinkBody,
+  type MintLinkResponse,
   PermissionBody,
   ReadBody,
   SearchQuery,
@@ -154,8 +158,26 @@ export function createApi(s: Services): Hono<AuthedEnv> {
   // ---- devices ---------------------------------------------------------------------------------
 
   api.get("/devices", (c) => c.json<DevicesResponse>(s.auth.listDevices(c.get("device").id)));
+  api.patch("/devices/:id", async (c) => {
+    const { name } = DevicePatchBody.parse(await c.req.json());
+    return c.json<DeviceResponse>(s.auth.rename(c.req.param("id"), name, c.get("device").id));
+  });
   api.delete("/devices/:id", (c) => {
     s.auth.revoke(c.req.param("id"));
+    return c.body(null, 204);
+  });
+  api.post("/devices/links", async (c) => {
+    const { label } = MintLinkBody.parse(await c.req.json());
+    const { linkId, token, expiresAt } = s.auth.mintUiLink(c.get("device").id, label);
+    const rawBase = s.publicUrl ?? c.req.header("origin") ?? new URL(c.req.url).origin;
+    const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+    return c.json<MintLinkResponse>(
+      { id: linkId, url: `${base}login#token=${token}`, expiresAt, label: label?.trim() || null },
+      201,
+    );
+  });
+  api.delete("/devices/links/:id", (c) => {
+    s.auth.cancelLink(c.req.param("id"));
     return c.body(null, 204);
   });
 

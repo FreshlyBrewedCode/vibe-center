@@ -9,6 +9,7 @@ import type {
   Message,
   MessageSearchHit,
   Session,
+  Timestamp,
 } from "./domain.ts";
 
 export const paths = {
@@ -29,6 +30,8 @@ export const paths = {
   harnessProbe: (id: string) => `/api/harnesses/${id}/probe`,
   devices: "/api/devices",
   device: (id: string) => `/api/devices/${id}`,
+  deviceLinks: "/api/devices/links",
+  deviceLink: (id: string) => `/api/devices/links/${id}`,
   info: "/api/info",
   ws: "/ws",
 } as const;
@@ -39,6 +42,9 @@ export const AuthExchangeBody = z.object({
   token: z.string().min(16),
   deviceName: z.string().max(100).optional(),
 });
+
+export const MintLinkBody = z.object({ label: z.string().trim().max(100).optional() });
+export const DevicePatchBody = z.object({ name: z.string().trim().min(1).max(100) });
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -138,6 +144,14 @@ export interface SendMessageResponse {
 }
 export type HarnessesResponse = Harness[];
 export type DevicesResponse = Device[];
+export type DeviceResponse = Device;
+/** A freshly minted sign-in link: `id` cancels it (`DELETE deviceLink(id)`), matches `device.link.paired`. */
+export interface MintLinkResponse {
+  id: string;
+  url: string;
+  expiresAt: Timestamp;
+  label: string | null;
+}
 export type SearchResponse = MessageSearchHit[];
 /** Mostly-static info for the General settings page. */
 export interface InfoResponse {
