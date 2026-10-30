@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import type { ConfigValues } from "@vibe-center/shared";
+import type { ProcessTracker } from "../procs.ts";
 import {
   type AdapterAgent,
   type AuthReport,
@@ -93,6 +94,8 @@ export interface RuntimeOptions extends RuntimeConfig {
   session: { key: string; acpSessionId: string | null };
   onEvent: (event: RuntimeEvent) => void;
   timeouts?: Partial<RuntimeTimeouts>;
+  /** Records the harness's process group so a crashed server's next start can reap it. */
+  tracker?: ProcessTracker;
 }
 
 interface ActiveTurn {
@@ -478,7 +481,7 @@ export class AgentRuntime {
           if (report) this.emit({ type: "auth", report });
         },
       },
-      { initTimeoutMs: this.timeouts.initMs },
+      { initTimeoutMs: this.timeouts.initMs, tracker: this.opts.tracker },
     );
     if (this.disposed) {
       await proc.close();

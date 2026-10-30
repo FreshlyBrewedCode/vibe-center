@@ -13,6 +13,7 @@ import {
 import { dataPaths, expandHome } from "../config.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { EventBus } from "../events/bus.ts";
+import type { ProcessTracker } from "../procs.ts";
 import { HttpError } from "./errors.ts";
 import { type HarnessService, launchConfig } from "./harnesses.ts";
 import type { PresenceStore } from "./presence.ts";
@@ -55,6 +56,7 @@ export interface ChatOptions {
   dataDir: string;
   mcp: McpProvider;
   timeouts?: Partial<RuntimeTimeouts>;
+  tracker?: ProcessTracker;
 }
 
 /**
@@ -256,6 +258,7 @@ export class ChatService {
       session: { key: session.id, acpSessionId: session.acpSessionId },
       onEvent: (e) => this.onRuntimeEvent(agent.id, e),
       timeouts: this.opts.timeouts,
+      tracker: this.opts.tracker,
     });
     this.runtimes.set(agent.id, rt);
     return rt;

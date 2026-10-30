@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { LINK_TOKEN_TTL_MS } from "./auth/auth.ts";
-import { DEFAULT_HTTPS_PORT, DEFAULT_PORT, dataPaths, resolveDataDir } from "./config.ts";
+import { DEFAULT_HTTPS_PORT, DEFAULT_PORT, dataPaths, ensureDataDir, resolveDataDir } from "./config.ts";
 import { type LinkResponse, requestLink, startControlServer } from "./control.ts";
 import { WEB_DIST } from "./http/static.ts";
 import { createServer } from "./server.ts";
@@ -59,7 +59,7 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  ensureDataDir(dataDir);
   const port = Number(values.port ?? process.env.VIBE_CENTER_PORT ?? DEFAULT_PORT);
   const httpsPort = Number(values["https-port"] ?? DEFAULT_HTTPS_PORT);
   const cleanups: (() => unknown)[] = [];
@@ -137,18 +137,29 @@ async function main(): Promise<number> {
     throw e;
   }
 
-  await new Promise<void>((resolve) => {
+  return new Promise<number>((resolve) => {
     let stopping = false;
-    const stop = () => {
+    const stop = (code: number) => {
       if (stopping) return;
       stopping = true;
       console.log("\nStopping…");
-      void cleanup().then(resolve);
+      void cleanup().then(() => resolve(code));
     };
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
+    process.on("SIGINT", () => stop(0));
+    process.on("SIGTERM", () => stop(0));
+    process.on("SIGHUP", () => stop(0));
+    // A bug that throws in a timer or callback: stop the harnesses, worker and tailscale serve
+    // entry instead of dying with them still up. (SIGKILL/OOM can't be caught; the next start
+    // reaps those leftovers, see procs.ts.)
+    process.on("uncaughtException", (e) => {
+      console.error("vibe-center: uncaught exception, shutting down", e);
+      stop(1);
+    });
+    // One stray promise shouldn't take every agent down: log it and keep serving.
+    process.on("unhandledRejection", (e) => {
+      console.error("vibe-center: unhandled rejection", e);
+    });
   });
-  return 0;
 }
 
 function printLink(l: LinkResponse): void {

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HarnessHealth, HarnessProbe } from "@vibe-center/shared";
+import type { ProcessTracker } from "../procs.ts";
 import { type AuthReport, adapters, type HarnessLaunchConfig, launchSpec } from "./adapters/index.ts";
 import { toConfigOptions } from "./config-options.ts";
 import { AcpProcess, raceExit, SpawnError, withTimeout } from "./process.ts";
@@ -20,7 +21,7 @@ export interface ProbeResult {
  */
 export async function probeHarness(
   harness: HarnessLaunchConfig,
-  opts: { deep?: boolean; timeoutMs?: number } = {},
+  opts: { deep?: boolean; timeoutMs?: number; tracker?: ProcessTracker } = {},
 ): Promise<ProbeResult> {
   const adapter = adapters[harness.kind];
   const timeoutMs = opts.timeoutMs ?? 45_000;
@@ -50,7 +51,7 @@ export async function probeHarness(
           auth = adapter.readAuth?.(method, params) ?? auth;
         },
       },
-      { initTimeoutMs: timeoutMs, clientName: "vibe-center-probe" },
+      { initTimeoutMs: timeoutMs, clientName: "vibe-center-probe", tracker: opts.tracker },
     );
     const p = proc;
     const caps = p.init.agentCapabilities ?? {};

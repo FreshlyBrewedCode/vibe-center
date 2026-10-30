@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
+import { type ProcessTracker, stopGroup } from "../procs.ts";
 import * as acp from "./protocol.ts";
 
 export interface LaunchSpec {
@@ -40,12 +41,15 @@ const STDERR_TAIL_LINES = 60;
 /**
  * One harness process speaking ACP over stdio: spawn, `initialize`, and teardown. The process
  * runs in its own process group so closing it also stops whatever it spawned (Claude Code's
- * bundled binary, MCP servers).
+ * bundled binary, MCP servers). When the harness exits on its own (a crash), the rest of its
+ * group is stopped too. With a `tracker`, the group is recorded so a crashed server's next
+ * start can reap it (see `procs.ts`).
  */
 export class AcpProcess {
   readonly exited: Promise<ExitInfo>;
   private exitInfo: ExitInfo | null = null;
   private stderrLines: string[] = [];
+  private stopping: Promise<void> | null = null;
 
   private constructor(
     private readonly child: ChildProcess,
@@ -53,11 +57,14 @@ export class AcpProcess {
     readonly init: acp.InitializeResponse,
     exited: Promise<ExitInfo>,
     stderrLines: string[],
+    private readonly untrack: () => void,
   ) {
     this.exited = exited;
     this.stderrLines = stderrLines;
     void exited.then((info) => {
       this.exitInfo = info;
+      // crashed or quit by itself: don't leave its children behind
+      void this.stopGroup(500);
     });
   }
 
@@ -80,11 +87,11 @@ export class AcpProcess {
   static async start(
     spec: LaunchSpec,
     handlers: ClientHandlers,
-    opts: { initTimeoutMs?: number; clientName?: string } = {},
+    opts: { initTimeoutMs?: number; clientName?: string; tracker?: ProcessTracker } = {},
   ): Promise<AcpProcess> {
     const child = spawn(spec.command, spec.args, {
       cwd: spec.cwd,
-      env: { ...process.env, ...spec.env },
+      env: { ...process.env, ...spec.env, ...opts.tracker?.env },
       stdio: ["pipe", "pipe", "pipe"],
       detached: true,
     });
@@ -117,6 +124,7 @@ export class AcpProcess {
         );
       });
     });
+    const untrack = child.pid ? (opts.tracker?.track(child.pid, `harness ${spec.command}`) ?? noop) : noop;
 
     const app = acp
       .client({ name: opts.clientName ?? "vibe-center" })
@@ -132,7 +140,7 @@ export class AcpProcess {
     );
 
     const proc = (init: acp.InitializeResponse) =>
-      new AcpProcess(child, connection, init, exited, stderrLines);
+      new AcpProcess(child, connection, init, exited, stderrLines, untrack);
     const timeoutMs = opts.initTimeoutMs ?? 30_000;
     try {
       const init = await raceExit(
@@ -151,32 +159,31 @@ export class AcpProcess {
       return proc(init);
     } catch (e) {
       connection.close();
-      killGroup(child, "SIGKILL");
+      if (child.pid) await stopGroup(child.pid, 0);
+      untrack();
       throw e;
     }
   }
 
-  /** Close the connection and stop the process group (SIGTERM, then SIGKILL after `graceMs`). */
+  /**
+   * Close the connection and stop the whole process group: SIGTERM, then SIGKILL to the group
+   * after `graceMs`, also when the harness itself exited before that.
+   */
   async close(graceMs = 2000): Promise<void> {
     this.connection.close();
-    if (!this.alive) return;
-    killGroup(this.child, "SIGTERM");
-    const timer = setTimeout(() => killGroup(this.child, "SIGKILL"), graceMs);
+    await this.stopGroup(graceMs);
     await this.exited;
-    clearTimeout(timer);
+  }
+
+  private stopGroup(graceMs: number): Promise<void> {
+    this.stopping ??= (this.child.pid ? stopGroup(this.child.pid, graceMs) : Promise.resolve()).finally(
+      this.untrack,
+    );
+    return this.stopping;
   }
 }
 
-function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (!child.pid) return;
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-    try {
-      child.kill(signal);
-    } catch {}
-  }
-}
+const noop = () => {};
 
 export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;

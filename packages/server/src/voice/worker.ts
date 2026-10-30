@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { createServer } from "node:net";
 import { dirname } from "node:path";
+import { type ProcessTracker, stopGroup } from "../procs.ts";
 
 /**
  * HTTP client for the voice worker's API (services/voice/voice_worker/server.py). Every request
@@ -70,6 +71,8 @@ export interface ManagedWorkerOptions {
   onChange: () => void;
   /** First restart delay; doubles per consecutive crash up to 30 s. */
   restartDelayMs?: number;
+  /** Records the worker's process group so a crashed server's next start can reap it. */
+  tracker?: ProcessTracker;
 }
 
 const LOG_TAIL = 200;
@@ -122,7 +125,7 @@ export class ManagedWorker {
     this.stopping = false;
     this.port = await freePort();
     mkdirSync(dirname(this.opts.logFile), { recursive: true });
-    this.log ??= createWriteStream(this.opts.logFile, { flags: "a" });
+    this.log ??= createWriteStream(this.opts.logFile, { flags: "a", mode: 0o600 });
     const [cmd, ...args] = this.opts.command;
     if (!cmd) throw new Error("no voice worker command");
     this.line(`--- starting voice worker on 127.0.0.1:${this.port}: ${this.opts.command.join(" ")}`);
@@ -132,6 +135,7 @@ export class ManagedWorker {
       env: {
         ...process.env,
         ...this.opts.env,
+        ...this.opts.tracker?.env,
         VC_WORKER_HOST: "127.0.0.1",
         VC_WORKER_PORT: String(this.port),
         VC_WORKER_TOKEN: this.token,
@@ -140,6 +144,9 @@ export class ManagedWorker {
     });
     this.child = child;
     this.startedAt = Date.now();
+    const untrack = child.pid
+      ? (this.opts.tracker?.track(child.pid, "voice worker") ?? (() => {}))
+      : () => {};
     const onData = (d: Buffer) => {
       for (const l of d.toString().split("\n")) if (l.trim()) this.line(l);
     };
@@ -148,7 +155,12 @@ export class ManagedWorker {
     this.exited = new Promise((resolve) => {
       child.once("exit", (code, signal) => {
         this.onExit(child, code, signal);
-        resolve();
+        // uv's python child and anything else in the group go with it
+        const done = child.pid ? stopGroup(child.pid, this.stopping ? 5000 : 500) : Promise.resolve();
+        void done.finally(() => {
+          untrack();
+          resolve();
+        });
       });
       child.once("error", (e) => {
         this.line(`voice worker failed to start: ${e.message}`);
@@ -163,13 +175,10 @@ export class ManagedWorker {
     if (this.restartTimer) clearTimeout(this.restartTimer);
     this.restartTimer = null;
     const child = this.child;
+    // SIGTERM to the group, SIGKILL after 5 s, also to members that outlive the leader
     if (child?.pid) {
-      killGroup(child.pid, "SIGTERM");
-      const done = await Promise.race([this.exited.then(() => true), Bun.sleep(5000).then(() => false)]);
-      if (!done) {
-        killGroup(child.pid, "SIGKILL");
-        await this.exited;
-      }
+      await stopGroup(child.pid, 5000);
+      await this.exited;
     }
     this.log?.end();
     this.log = null;
@@ -205,16 +214,6 @@ export class ManagedWorker {
     this.log?.write(`${l}\n`);
     this.tail.push(l);
     if (this.tail.length > LOG_TAIL) this.tail.splice(0, this.tail.length - LOG_TAIL);
-  }
-}
-
-function killGroup(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {}
   }
 }
 

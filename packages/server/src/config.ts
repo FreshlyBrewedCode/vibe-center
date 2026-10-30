@@ -1,3 +1,4 @@
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -15,7 +16,18 @@ export function dataPaths(dataDir: string) {
     /** Per-agent scratch dirs for generated harness config. */
     agentState: (agentId: string) => join(dataDir, "agents", agentId),
     logs: join(dataDir, "logs"),
+    /** One file per live child process group, for reaping after a crash (procs.ts). */
+    run: join(dataDir, "run"),
   };
+}
+
+/**
+ * Create the data dir private to the user (0700), and tighten it if it already exists with a
+ * looser mode: it holds the DB with MCP secrets, device hashes and the voice worker token.
+ */
+export function ensureDataDir(dataDir: string): void {
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  chmodSync(dataDir, 0o700);
 }
 
 export function expandHome(p: string): string {

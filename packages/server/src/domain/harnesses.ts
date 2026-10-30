@@ -12,6 +12,7 @@ import { newId } from "../db/index.ts";
 import type { HarnessRecord } from "../db/repos/harnesses.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { EventBus } from "../events/bus.ts";
+import type { ProcessTracker } from "../procs.ts";
 import { HttpError } from "./errors.ts";
 
 /** Preset harnesses, seeded on first start. Their ids double as stable references. */
@@ -31,6 +32,7 @@ export class HarnessService {
   constructor(
     private readonly repos: Repos,
     private readonly bus: EventBus,
+    private readonly tracker?: ProcessTracker,
   ) {
     for (const p of PRESETS) {
       if (!repos.harnesses.get(p.id)) {
@@ -95,7 +97,7 @@ export class HarnessService {
     const p = (async () => {
       this.repos.harnesses.setHealth(id, { ...h.health, status: "unknown", message: "checking…" });
       this.publish(id);
-      const result = await probeHarness(launchConfig(h), opts);
+      const result = await probeHarness(launchConfig(h), { ...opts, tracker: this.tracker });
       this.repos.harnesses.setHealth(id, result.health);
       if (result.probe) this.repos.harnesses.setProbe(id, result.probe);
       return this.publish(id);

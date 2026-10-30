@@ -24,7 +24,10 @@
 //
 // Env: FAKE_ACP_NO_SYSTEM_PROMPT=1 hides the systemPrompt capability, FAKE_ACP_NO_RESUME=1 the
 // resume capability, FAKE_ACP_NO_MCP_HTTP=1 the HTTP MCP capability (stdio servers only), FAKE_ACP_STATE=<file> persists sessions so they can be resumed by a new
-// process.
+// process. FAKE_ACP_SLOW_SESSION=<ms> delays session/new. FAKE_ACP_STUBBORN=child|all starts a
+// child that ignores SIGTERM (its pid goes to FAKE_ACP_CHILD_PID_FILE); with `all` the agent
+// ignores SIGTERM too.
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Readable, Writable } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -38,6 +41,15 @@ interface FakeSession {
   mode: string;
   prompts: number;
   mcpServers: acp.McpServer[];
+}
+
+const stubborn = process.env.FAKE_ACP_STUBBORN;
+if (stubborn) {
+  if (stubborn === "all") process.on("SIGTERM", () => {});
+  // an ignored signal stays ignored across exec, so `sleep` shrugs off SIGTERM
+  const child = spawn("bash", ["-c", 'trap "" TERM; exec sleep 600'], { stdio: "ignore" });
+  if (process.env.FAKE_ACP_CHILD_PID_FILE)
+    writeFileSync(process.env.FAKE_ACP_CHILD_PID_FILE, String(child.pid));
 }
 
 const statePath = process.env.FAKE_ACP_STATE;
@@ -125,7 +137,9 @@ const app = acp
     },
     authMethods: [],
   }))
-  .onRequest("session/new", ({ params }) => {
+  .onRequest("session/new", async ({ params }) => {
+    const slow = Number(process.env.FAKE_ACP_SLOW_SESSION ?? 0);
+    if (slow) await Bun.sleep(slow);
     const sessionId = `fake-${crypto.randomUUID()}`;
     const s: FakeSession = {
       systemPrompt: systemPromptText(params.systemPrompt),

@@ -1,7 +1,7 @@
 import type { McpProvider } from "./acp/mcp.ts";
 import type { RuntimeTimeouts } from "./acp/runtime.ts";
 import { AuthService } from "./auth/auth.ts";
-import { dataPaths } from "./config.ts";
+import { dataPaths, ensureDataDir } from "./config.ts";
 import { openDb } from "./db/index.ts";
 import { createRepos, type Repos } from "./db/repos/index.ts";
 import { AgentService } from "./domain/agents.ts";
@@ -10,6 +10,7 @@ import { HarnessService } from "./domain/harnesses.ts";
 import { PresenceStore } from "./domain/presence.ts";
 import { EventBus } from "./events/bus.ts";
 import { McpService } from "./mcp/service.ts";
+import { ProcessRegistry } from "./procs.ts";
 import { type VoiceOptions, VoiceService } from "./voice/service.ts";
 
 export interface ServicesOptions {
@@ -37,23 +38,33 @@ export interface Services {
   setPublicUrl(url: string | null): void;
   /** Voice calls: the worker, its bridge and the calls (phase 2b). */
   voice: VoiceService;
+  /** Process groups the server spawned (harnesses, voice worker, GPU jobs), for crash reaping. */
+  procs: ProcessRegistry;
   close(): Promise<void>;
 }
 
 export function createServices(opts: ServicesOptions): Services {
+  ensureDataDir(opts.dataDir);
+  // whatever a crashed earlier run left running goes before anything new starts
+  const procs = new ProcessRegistry(dataPaths(opts.dataDir).run);
+  procs.reapStale();
   const repos = createRepos(openDb(dataPaths(opts.dataDir).db));
   const bus = new EventBus();
   const presence = new PresenceStore(bus);
   const auth = new AuthService(repos, bus);
-  const harnesses = new HarnessService(repos, bus);
+  const harnesses = new HarnessService(repos, bus, procs);
   const mcp = new McpService(repos, bus);
   const chat = new ChatService(repos, bus, presence, harnesses, {
     dataDir: opts.dataDir,
     mcp: opts.mcp ?? mcp.gateway,
     timeouts: opts.timeouts,
+    tracker: procs,
   });
   const agents = new AgentService(repos, bus, presence, harnesses, chat);
-  const voice = new VoiceService({ repos, bus, chat, presence, dataDir: opts.dataDir }, opts.voice);
+  const voice = new VoiceService(
+    { repos, bus, chat, presence, dataDir: opts.dataDir, tracker: procs },
+    opts.voice,
+  );
   // agent replies to an agent in a call are spoken there (2a's messenger → 2b's event hook)
   mcp.bind({ chat, presence, speakEvent: (agentId, text, o) => voice.speakEvent(agentId, text, o) });
   const services: Services = {
@@ -72,6 +83,7 @@ export function createServices(opts: ServicesOptions): Services {
       voice.setPublicUrl(url);
     },
     voice,
+    procs,
     async close() {
       await voice.stop();
       await chat.dispose();

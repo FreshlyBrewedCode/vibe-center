@@ -22,6 +22,7 @@ import type { ChatService } from "../domain/chat.ts";
 import { HttpError } from "../domain/errors.ts";
 import type { PresenceStore } from "../domain/presence.ts";
 import type { EventBus } from "../events/bus.ts";
+import { type ProcessTracker, stopGroup } from "../procs.ts";
 import { type BridgeSocketData, CallBridge, type SpokenEvent } from "./bridge.ts";
 import { publicSettings, type StoredVoiceSettings, VoiceSettingsStore } from "./settings.ts";
 import { ManagedWorker, WorkerClient, WorkerError, type WorkerHealth } from "./worker.ts";
@@ -73,7 +74,7 @@ export class VoiceService {
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private checking: Promise<void> | null = null;
   private lastPublished = "";
-  private gpuJob: { action: GpuSpeechAction } | null = null;
+  private gpuJob: { action: GpuSpeechAction; pid: number | null; done: Promise<void> } | null = null;
   private stopped = false;
   private starting: Promise<void> = Promise.resolve();
   private state: VoiceStatus;
@@ -85,6 +86,7 @@ export class VoiceService {
       chat: ChatService;
       presence: PresenceStore;
       dataDir: string;
+      tracker?: ProcessTracker;
     },
     private readonly opts: VoiceOptions = {},
   ) {
@@ -140,6 +142,12 @@ export class VoiceService {
     for (const id of [...this.calls.keys()]) await this.hangUp(id, "server stopping");
     await this.managed?.stop();
     this.managed = null;
+    // a `speech.sh up` can poll km-pc for minutes; it doesn't outlive the app
+    const job = this.gpuJob;
+    if (job?.pid) {
+      await stopGroup(job.pid, 2000);
+      await job.done;
+    }
   }
 
   // ---- settings and status --------------------------------------------------------------------
@@ -257,6 +265,7 @@ export class VoiceService {
       dataDir: join(this.deps.dataDir, "voice"),
       logFile: join(dataPaths(this.deps.dataDir).logs, "voice-worker.log"),
       restartDelayMs: this.opts.restartDelayMs,
+      tracker: this.deps.tracker,
       onChange: () => void this.checkHealth(),
     });
     await this.managed.start();
@@ -500,18 +509,29 @@ export class VoiceService {
   gpuSpeech(action: GpuSpeechAction): VoiceStatus {
     const script = this.gpuScript();
     if (!script) throw new HttpError(404, "GPU speech control isn't available on this machine");
+    if (this.stopped) throw new HttpError(503, "the server is stopping");
     if (this.gpuJob) throw new HttpError(409, `speech.sh ${this.gpuJob.action} is still running`);
-    this.gpuJob = { action };
     this.state = { ...this.state, gpuSpeech: { ...this.state.gpuSpeech, running: action, lastOutput: "" } };
     this.publishStatus();
-    const child = spawn("bash", [script, action], { stdio: ["ignore", "pipe", "pipe"] });
+    // own process group, so stop() also reaches the `gpu ssh` it runs
+    const child = spawn("bash", [script, action], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+      env: { ...process.env, ...this.deps.tracker?.env },
+    });
+    const untrack = child.pid ? (this.deps.tracker?.track(child.pid, `speech.sh ${action}`) ?? null) : null;
+    let finished!: () => void;
+    this.gpuJob = { action, pid: child.pid ?? null, done: new Promise((r) => (finished = r)) };
     let output = "";
     const add = (d: Buffer) => {
       output = (output + d.toString()).slice(-20_000);
     };
     child.stdout.on("data", add);
     child.stderr.on("data", add);
+    child.once("error", (e) => add(Buffer.from(`could not run speech.sh: ${e.message}\n`)));
     child.once("close", (code) => {
+      untrack?.();
+      finished();
       this.gpuJob = null;
       this.state = {
         ...this.state,

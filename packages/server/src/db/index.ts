@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export type Db = Database;
@@ -16,6 +16,11 @@ const MIGRATIONS_DIR = join(import.meta.dir, "migrations");
 export function openDb(path: string): Db {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new Database(path, { create: true, strict: true });
+  // 0600 before WAL mode creates -wal/-shm (SQLite gives them the DB file's mode); older DBs
+  // created 0644 get tightened here too
+  if (path !== ":memory:") {
+    for (const f of [path, `${path}-wal`, `${path}-shm`]) if (existsSync(f)) chmodSync(f, 0o600);
+  }
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA synchronous = NORMAL");
   db.run("PRAGMA foreign_keys = ON");
