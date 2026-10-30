@@ -76,6 +76,12 @@ def browser_join(recs: list[dict], browser: dict) -> None:
         mouth = max(ends)
         r["browser"] = b = {"mic_end": mouth}
         if "first_audio_out" in t:
+            # audio already playing then (a filler, the previous reply): no onset to measure
+            if any(
+                x["on"] < t["first_audio_out"] - 50 and (x["off"] or 1e18) >= t["first_audio_out"]
+                for x in bot
+            ):
+                continue
             ons = [x["on"] for x in bot if x["on"] >= t["first_audio_out"] - 50]
             if ons:
                 b["agent_heard"] = min(ons) - mouth
@@ -98,7 +104,7 @@ def summarize(recs: list[dict], md: bool = False) -> str:
     user = [r for r in recs if r["kind"] == "user" and "speech_end" in r["t"]]
     meta = recs[0].get("meta", {}) if recs else {}
     out.append(
-        f"backend={meta.get('backend')} stt={meta.get('stt')} tts={meta.get('tts')} "
+        f"stt={meta.get('stt')} tts={meta.get('tts')} "
         f"agent={meta.get('agent')} filler={meta.get('filler')} turns={len(recs)} (user turns with VAD stop: {len(user)})"
     )
     out.append("")
