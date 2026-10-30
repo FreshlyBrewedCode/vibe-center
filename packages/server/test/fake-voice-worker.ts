@@ -4,7 +4,8 @@
 // Tests drive the "caller" through /test/* (no auth):
 //
 //   POST /test/say {text, kind?, context?}  send a prompt over the bridge  → {id}
-//   POST /test/cancel {id}                  barge-in
+//   POST /test/cancel {id}                  barge-in, turn still running
+//   POST /test/interrupted {id}             barge-in, turn already finished
 //   POST /test/state {state}                report listening/thinking/speaking
 //   GET  /test/frames                       every frame the app sent on the bridge
 //   POST /test/crash                        exit(1), for restart tests
@@ -66,6 +67,9 @@ Bun.serve({
         }
         case "/test/cancel":
           bridge?.send(JSON.stringify({ type: "cancel", id: b.id }));
+          return json({ ok: true });
+        case "/test/interrupted":
+          bridge?.send(JSON.stringify({ type: "interrupted", id: b.id }));
           return json({ ok: true });
         case "/test/state":
           bridge?.send(JSON.stringify({ type: "state", state: b.state }));

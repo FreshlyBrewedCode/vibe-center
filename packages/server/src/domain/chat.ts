@@ -158,6 +158,19 @@ export class ChatService {
     this.runtimes.get(agentId)?.cancelPrompt(turnId);
   }
 
+  /**
+   * A voice reply was barged into after the turn had already finished generating (so there was
+   * nothing left to cancel): mark its reply message(s) as interrupted. The DM still shows what
+   * the agent wrote; the marker says the user may not have heard all of it.
+   */
+  markInterrupted(turnId: string): void {
+    for (const m of this.repos.messages.byTurn(turnId)) {
+      if (m.role !== "agent" || (m.kind !== "text" && m.kind !== "voice_transcript")) continue;
+      const message = this.repos.messages.update(m.id, { data: { ...m.data, interrupted: true } });
+      if (message) this.bus.publish({ type: "message.upsert", message });
+    }
+  }
+
   /** End the active session and start a fresh one; history stays, a divider marks the boundary. */
   async newSession(conversationId: string): Promise<Session> {
     const conv = this.requireConversation(conversationId);

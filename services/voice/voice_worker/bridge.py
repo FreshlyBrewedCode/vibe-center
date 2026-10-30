@@ -6,7 +6,8 @@ The app gives every call its own bridge URL and credential in `POST /calls`.
 
 Worker → app frames (JSON):
     {"type": "prompt", "id", "text", "kind": "user"|"event", "context"?}   start a turn
-    {"type": "cancel", "id"}                                                barge-in
+    {"type": "cancel", "id"}                                                barge-in, turn running
+    {"type": "interrupted", "id"}                           barge-in, turn already finished
     {"type": "state", "state": "listening"|"thinking"|"speaking"}           call UI, presence
     {"type": "latency", "turn", "kind", "ms": {...}, ...}                   per-turn summary
 App → worker frames:
@@ -139,6 +140,9 @@ class Bridge:
 
     def cancel(self, prompt_id: str) -> None:
         self.send({"type": "cancel", "id": prompt_id})
+
+    def mark_interrupted(self, prompt_id: str) -> None:
+        self.send({"type": "interrupted", "id": prompt_id})
 
     # ---- loops ------------------------------------------------------------------------------
 

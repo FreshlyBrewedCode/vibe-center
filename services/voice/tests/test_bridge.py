@@ -109,6 +109,17 @@ async def test_cancel_and_error(app_url):
     await bridge.close()
 
 
+async def test_mark_interrupted(app_url):
+    fake, url = app_url
+    bridge = await Bridge.connect(url, TOKEN)
+    await collect(bridge.prompt("hello"))
+    pid = fake.received[0]["id"]
+    bridge.mark_interrupted(pid)
+    await asyncio.sleep(0.05)
+    assert {"type": "interrupted", "id": pid} in fake.received
+    await bridge.close()
+
+
 async def test_events_end_and_closed_bridge(app_url):
     fake, url = app_url
     bridge = await Bridge.connect(url, TOKEN)

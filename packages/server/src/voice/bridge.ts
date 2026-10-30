@@ -9,8 +9,9 @@ import type { EventBus } from "../events/bus.ts";
  * WebSocket per call, authenticated by the call's own Bearer credential. The worker's "LLM step"
  * arrives here as `prompt` frames, goes into the agent's existing session through
  * `ChatService.prompt` (source "voice", transcripts on both sides, the voice-mode note, a short
- * idle timeout), and the reply streams back as `text`/`tool` frames. `cancel` (barge-in) cancels
- * only that turn.
+ * idle timeout), and the reply streams back as `text`/`tool` frames. `cancel` (barge-in while the
+ * turn is still running) cancels only that turn; `interrupted` (barge-in while a finished reply is
+ * still being spoken) marks its reply message instead, since there is nothing left to cancel.
  */
 export interface BridgeSocketData {
   bridgeCallId: string;
@@ -19,6 +20,7 @@ export interface BridgeSocketData {
 export type WorkerFrame =
   | { type: "prompt"; id: string; text: string; kind?: "user" | "event"; context?: string }
   | { type: "cancel"; id: string }
+  | { type: "interrupted"; id: string }
   | { type: "state"; state: Exclude<CallState, "connecting" | "ended"> }
   | ({ type: "latency" } & CallTurnLatency);
 
@@ -74,6 +76,9 @@ interface OpenPrompt {
 export class CallBridge {
   private ws: ServerWebSocket<BridgeSocketData> | null = null;
   private prompts = new Map<string, OpenPrompt>();
+  /** Turn id of a prompt that already resolved, kept around for a late "interrupted" frame (the
+   * worker only knows a reply was barged into once the bot stops speaking, after the turn ended). */
+  private resolvedTurns = new Map<string, string>();
   /** Events handed to the worker, waiting for it to prompt them (it does, in order). */
   private events: { text: string; opts: SpokenEvent }[] = [];
   private closed = false;
@@ -114,6 +119,9 @@ export class CallBridge {
       case "cancel":
         this.cancel(frame.id);
         return;
+      case "interrupted":
+        this.interrupted(frame.id);
+        return;
       case "state":
         this.handlers.onState(frame.state);
         return;
@@ -145,6 +153,7 @@ export class CallBridge {
     this.closed = true;
     this.unsubscribe();
     for (const id of this.prompts.keys()) this.cancel(id);
+    this.resolvedTurns.clear();
     try {
       this.ws?.close(1000, reason.slice(0, 100));
     } catch {}
@@ -186,6 +195,7 @@ export class CallBridge {
     void handle.done.then(
       (r) => {
         this.prompts.delete(f.id);
+        if (open.turnId) this.resolvedTurns.set(f.id, open.turnId);
         this.send({ type: "done", id: f.id, status: r.status, error: r.error });
       },
       (e) => {
@@ -200,6 +210,13 @@ export class CallBridge {
     if (!open || open.cancelled) return;
     open.cancelled = true;
     if (open.turnId) this.chat.cancelTurn(this.agentId, open.turnId);
+  }
+
+  /** The reply already finished generating when the barge-in happened: nothing to cancel, just mark it. */
+  private interrupted(id: string): void {
+    const turnId = this.prompts.get(id)?.turnId ?? this.resolvedTurns.get(id);
+    this.resolvedTurns.delete(id);
+    if (turnId) this.chat.markInterrupted(turnId);
   }
 
   private forward(id: string, open: OpenPrompt, u: acp.SessionUpdate): void {

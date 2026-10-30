@@ -164,6 +164,7 @@ class BridgeTalker(FrameProcessor):
         self._unanswered = ""  # user text of a prompt cancelled before the agent said anything
         self._prompt_text = ""
         self._spoken_in_prompt = False
+        self._last_reply_id: str | None = None  # finished reply whose audio may still be playing
 
     # ---- state ----------------------------------------------------------------------------
 
@@ -241,6 +242,11 @@ class BridgeTalker(FrameProcessor):
                 # A pause mid-sentence ended the turn early ("Explain in detail." ... "how you
                 # would..."): the next prompt says it continues the cancelled one.
                 self._unanswered = self._prompt_text
+        elif self._last_reply_id:
+            # The reply already finished generating (the turn is in the DB as "complete"); there
+            # is nothing to cancel, but the DM should still say the user may not have heard it all.
+            self._bridge.mark_interrupted(self._last_reply_id)
+            self._last_reply_id = None
         self._interrupted = bot_speaking or self._spoken_in_prompt
 
     def _cancel_prompt(self):
@@ -387,6 +393,8 @@ class BridgeTalker(FrameProcessor):
             if tools:
                 log.info(tools=list(tools.values()))
             log.info(reply_text="".join(reply).strip(), cancelled=stale())
+            if not stale() and spoken:
+                self._last_reply_id = stream.id
             if self._prompt_id == stream.id:
                 self._prompt_id = None
             self._prompt_done.set()

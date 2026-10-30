@@ -236,6 +236,19 @@ describe("a call through the bridge", () => {
     expect(ms[0]?.data).toMatchObject({ source: "voice" });
   });
 
+  test("a barge-in after the reply already finished marks it interrupted, not cancelled", async () => {
+    const { id } = await worker<{ id: string }>("/test/say", { text: "a short one" });
+    await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));
+    const reply = (await messages(agent)).at(-1)!;
+    expect(reply.status).toBe("complete");
+    await worker("/test/interrupted", { id });
+    const interrupted = await until(async () => {
+      const m = (await messages(agent)).find((mm) => mm.id === reply.id);
+      return m?.data && "interrupted" in m.data && m.data.interrupted ? m : null;
+    });
+    expect(interrupted.status).toBe("complete"); // the reply itself is unchanged, just flagged
+  });
+
   test("a silent tool call reaches the worker as a tool frame (the filler trigger)", async () => {
     const { id } = await worker<{ id: string }>("/test/say", { text: "what's the weather" });
     await until(async () => (await frames()).find((f) => f.type === "done" && f.id === id));

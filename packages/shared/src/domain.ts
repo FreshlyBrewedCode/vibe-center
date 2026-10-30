@@ -210,9 +210,16 @@ export interface SessionMarkerData {
 }
 
 export interface TurnMeta {
-  source: TurnSource;
+  /** Unset on an agent's own reply message, which carries no source of its own. */
+  source?: TurnSource;
   /** Sender for agent-to-agent messages (phase 2a). */
   fromAgentId?: Id | null;
+  /**
+   * Set on an agent's voice reply (phase 2b) when the worker reports it was barged into after
+   * the turn had already finished (so there was nothing left to cancel): the DM shows the full
+   * text, but the user may not have heard all of it.
+   */
+  interrupted?: boolean;
 }
 
 interface MessageBase {
