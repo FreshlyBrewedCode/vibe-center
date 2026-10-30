@@ -1,0 +1,41 @@
+/* Direction 4 — Editorial. Paper tones, serif body, red-ochre accent, hairlines instead of boxes. */
+.dir-editorial {
+  --bg: #f8f5ee;
+  --fg: #1d1a16;
+  --muted: #efeae0;
+  --muted-fg: #7b7369;
+  --card: #fdfbf6;
+  --line: #ddd6c8;
+  --accent: #b5412b;
+  --accent-fg: #fdfbf6;
+  --panel: #f2eee5;
+  --panel-fg: #1d1a16;
+  --danger: #b5412b;
+  --ok: #3d7a4f;
+  --warn: #b7791f;
+  --info: #2f5f98;
+  --call: #8a4b9a;
+  --code-kw: #8a4b9a;
+  --code-string: #3d7a4f;
+  --code-tag: #b5412b;
+}
+.dir-editorial .serif {
+  font-family: var(--font-serif);
+  font-variation-settings:
+    "opsz" 12,
+    "SOFT" 30,
+    "WONK" 0;
+}
+.dir-editorial .display {
+  font-family: var(--font-serif);
+  font-variation-settings:
+    "opsz" 72,
+    "SOFT" 50,
+    "WONK" 1;
+}
+.dir-editorial .label {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

@@ -1,0 +1,42 @@
+/* Direction 5 — Pulse. Near-black, electric violet→coral gradient, glass surfaces, glow rings. */
+.dir-pulse {
+  --bg: #0a0a10;
+  --fg: #f3f2f8;
+  --muted: #15151e;
+  --muted-fg: #8d8ca3;
+  --card: #13131b;
+  --line: #24242f;
+  --accent: #7c5cff;
+  --accent-fg: #ffffff;
+  --panel: #0e0e15;
+  --panel-fg: #f3f2f8;
+  --danger: #ff5c6c;
+  --ok: #38e39a;
+  --warn: #ffc247;
+  --info: #5aa6ff;
+  --call: #b18cff;
+  --code-kw: #c8a8ff;
+  --code-string: #8ff0c0;
+  --code-tag: #8ac6ff;
+  --grad: linear-gradient(135deg, #7c5cff 0%, #ff5c8a 100%);
+}
+.dir-pulse .grad {
+  background: var(--grad);
+}
+.dir-pulse .grad-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dir-pulse .glass {
+  background: color-mix(in oklab, #ffffff 6%, transparent);
+  border: 1px solid color-mix(in oklab, #ffffff 10%, transparent);
+  backdrop-filter: blur(16px);
+}
+.dir-pulse .glow {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--ring, var(--accent)),
+    0 0 18px 2px color-mix(in oklab, var(--ring, var(--accent)) 60%, transparent);
+}

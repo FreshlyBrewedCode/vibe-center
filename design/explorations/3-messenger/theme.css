@@ -1,0 +1,21 @@
+/* Direction 3 — Messenger. iOS-grouped light, bubbles, vivid agent colours. */
+.dir-messenger {
+  --bg: #ffffff;
+  --fg: #0b0b0f;
+  --muted: #f2f2f7;
+  --muted-fg: #8e8e93;
+  --card: #ffffff;
+  --line: #e5e5ea;
+  --accent: #5856d6;
+  --accent-fg: #ffffff;
+  --panel: #f9f9fb;
+  --panel-fg: #0b0b0f;
+  --danger: #ff3b30;
+  --ok: #34c759;
+  --warn: #ff9500;
+  --info: #007aff;
+  --call: #30b36a;
+  --code-kw: #ad3da4;
+  --code-string: #1c7a3d;
+  --code-tag: #0b5bd3;
+}

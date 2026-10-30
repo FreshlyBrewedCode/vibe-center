@@ -1,0 +1,21 @@
+/* Direction 2 — Console. Dark graphite, dense, monospace metadata. */
+.dir-console {
+  --bg: #0e1013;
+  --fg: #e3e6ea;
+  --muted: #151920;
+  --muted-fg: #7d8794;
+  --card: #12161b;
+  --line: #222932;
+  --accent: #2dd4bf;
+  --accent-fg: #06201c;
+  --panel: #0a0c0f;
+  --panel-fg: #c9d1d9;
+  --danger: #ff6b6b;
+  --ok: #3fb950;
+  --warn: #e3b341;
+  --info: #58a6ff;
+  --call: #c084fc;
+  --code-kw: #c084fc;
+  --code-string: #7ee787;
+  --code-tag: #79c0ff;
+}

@@ -1,0 +1,42 @@
+/* Direction 1 — Workspace. Slack's layout with a warm, calm palette. */
+.dir-workspace {
+  --bg: #ffffff;
+  --fg: #1c1917;
+  --muted: #f5f4f0;
+  --muted-fg: #6f6a64;
+  --card: #ffffff;
+  --line: #e8e5df;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --panel: #2a1f33;
+  --panel-fg: #ebe6f0;
+  --danger: #dc2626;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --info: #2563eb;
+  --call: #7c3aed;
+  --code-kw: #7c3aed;
+  --code-string: #0f766e;
+  --code-tag: #b45309;
+}
+
+.dir-workspace.dark {
+  --bg: #1b1819;
+  --fg: #efece8;
+  --muted: #262223;
+  --muted-fg: #9d9691;
+  --card: #211d1f;
+  --line: #342e31;
+  --accent: #8b83f6;
+  --accent-fg: #15121a;
+  --panel: #141114;
+  --panel-fg: #e6e1ea;
+  --danger: #f05252;
+  --ok: #34c37a;
+  --warn: #f0a429;
+  --info: #5b9bff;
+  --call: #a78bfa;
+  --code-kw: #b79bff;
+  --code-string: #5fd3bc;
+  --code-tag: #f0a060;
+}
