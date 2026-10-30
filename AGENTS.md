@@ -65,28 +65,27 @@ material from before v1; don't build on their code paths, port what you need.
   side and rebuild. Same for `bun.lock` (`bun install`).
 - Commit in logical steps on `main`, never secrets. Every feature lands with evidence that it works.
 
-## UI extension points (for phases 2a/2b slotting into the 2c layout)
+## UI extension points
 
-The 2c UI build-out left marked seams rather than guessing at 2a's (MCP/tools) or 2b's (voice)
-needs. 2a landed first and mounted its own `<AgentTools>` block under the form in
-`routes/_app/agents/$agentId/edit.tsx` rather than inside `AgentForm` — a fine alternative to the
-seam below, since tool enablement has its own save path per agent. 2b's seams are still open:
+2a (MCP/tools) and 2b (voice) have both landed in the 2c layout: the DM header's call button
+(`routes/_app/agents/$agentId/index.tsx`), the details panel's Voice section
+(`components/details-panel.tsx`), the agent editor's Voice `FormSection`
+(`components/agent-form.tsx`), Settings → Voice, and 2a's own `<AgentTools>` block under the form
+in `routes/_app/agents/$agentId/edit.tsx` (a fine alternative to a seam inside `AgentForm`, since
+tool enablement has its own save path per agent) are all in place. For a future phase that needs
+its own slot:
 
-- **DM header** (`routes/_app/agents/$agentId/index.tsx`): a `{/* SEAM (2b): the call button
-  mounts here */}` comment marks the spot among the header's action buttons (New session, Edit,
-  Details), before the trailing "Agent details" toggle.
-- **Details panel** (`components/details-panel.tsx`): a `{/* SEAM (2b): a "Voice" Section */}`
-  comment sits between "Current session" and "Quick actions" — add a `<Section title="Voice">`
-  (the `Section`/`Row` helpers in that file are already shared).
-- **Agent editor** (`components/agent-form.tsx`): same pattern, a `FormSection` placed after
-  "Harness and model" and before the submit buttons, reading/writing `agent.voice`.
-- **Settings** (`routes/_app/settings.tsx`): add one line to the `SECTIONS` array and a new
-  `routes/_app/settings/<yours>.tsx` route (see `general.tsx`/`harnesses.tsx` for the pattern:
-  wrap content in the shared `<Section title="…">` from `settings.tsx`).
 - **Sidebar/command palette/notifications are generic**, not per-agent — no seam needed there
   unless you're adding a new kind of global action (the ⌘K palette in
   `components/command-palette.tsx` is a plain list of `CommandItem`s to extend if useful, e.g. a
   "Start a call" action).
+- **Settings**: add one line to the `SECTIONS` array in `routes/_app/settings.tsx` and a new
+  `routes/_app/settings/<yours>.tsx` route (see `general.tsx`/`harnesses.tsx` for the pattern:
+  wrap content in the shared `<Section title="…">` from `settings.tsx`).
+- **Details panel**: append a `<Section title="…">` (the `Section`/`Row` helpers in
+  `components/details-panel.tsx` are shared).
+- **Agent editor**: append a `FormSection` in `components/agent-form.tsx`, before the submit
+  buttons.
 - Data layer: keep using `lib/queries.ts` (add your own hooks next to the existing ones) and
   `lib/events.ts`'s `applyEvent` (add cases for your own event types; unknown events are already
   ignored so this never breaks the others' tabs mid-rollout).
