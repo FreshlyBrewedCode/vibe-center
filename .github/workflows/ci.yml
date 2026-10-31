@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Biome, strict tsc for every package and e2e, bun test; then the web app `start` serves.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run check
+
+      - run: bun run build
+
+      # Later: stage and smoke-test the npm package here (the publishing details are still open),
+      # so a staging failure is caught on the PR rather than in the release job.
+
+  # The voice worker (services/voice) and the GPU speech servers' API tests: ruff + pytest.
+  voice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/voice/uv.lock
+
+      - run: services/voice/run.sh check
+
+  # One throwaway server, every main flow in Chromium. The voice call spec needs speech models
+  # and minutes of CPU, so it stays a local run (VC_E2E_VOICE=0 also starts the server without
+  # the voice worker).
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      VC_E2E_VOICE: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - run: bun install --frozen-lockfile
+
+      - run: bunx playwright install --with-deps chromium
+
+      - run: bun run e2e
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

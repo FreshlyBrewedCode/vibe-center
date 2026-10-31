@@ -69,7 +69,10 @@ material from before v1; don't build on their code paths, port what you need.
   keyword there for new scenarios); HTTP/WS flows in `test/server.test.ts`; one e2e per main flow.
 - Generated `packages/web/src/routeTree.gen.ts` is committed. On merge conflicts, take either
   side and rebuild. Same for `bun.lock` (`bun install`).
-- Commit in logical steps on `main`, never secrets. Every feature lands with evidence that it works.
+- Work on a branch and open a PR against `main`; PRs are squash-merged and the PR title becomes the
+  commit, so it must be a Conventional Commit (`feat(web): …`, `fix(voice): …`, `docs: …`; checked
+  by `pr-title.yml`). `feat`/`fix`/`perf` merges cut a `-next` pre-release (docs/RELEASING.md).
+  Commit in logical steps on the branch, never secrets. Every feature lands with evidence that it works.
 
 ## UI extension points
 
