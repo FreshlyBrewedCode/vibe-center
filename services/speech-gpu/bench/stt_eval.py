@@ -2,7 +2,7 @@
 (stt_backend.py). The eval audio comes from services/voice: `./run.sh python -m eval.export`,
 copied to /tmp/stt-eval with services/voice/eval/wer.py.
 
-usage (on km-pc, from ~/vibe-center/gpu-speech): VENV=<venv> ./env.sh python bench/stt_eval.py
+usage (on the GPU host, from ~/vibe-center/gpu-speech): VENV=<venv> ./env.sh python bench/stt_eval.py
           <model-id> <model-dir> [--fp32] [--prompt "Jeff, Ben, ..."] [--label NAME]
 env: STT_EVAL_DIR (default /tmp/stt-eval), STT_PAD_SECONDS (0 = no padding), STT_TRUE_LENGTH (0 = tell the model the padded length,
      as the server did before), STT_WHISPER_BEAM, STT_WHISPER_VOCAB (hotwords|prompt)

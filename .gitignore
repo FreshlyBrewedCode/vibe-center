@@ -40,3 +40,10 @@ services/speech-gpu/.uv
 
 # nix-provided chromium for Playwright on NixOS (see playwright.config.ts)
 .chromium
+
+# local-only material: pre-v1 prototype (large), internal reviews, machine-specific links and config
+prototype/
+docs/reviews/
+.agents/skills/gpu
+.claude/skills/gpu
+services/speech-gpu/local.env

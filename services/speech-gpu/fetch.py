@@ -7,7 +7,7 @@ writes the `.complete` marker when this exits 0.
 """
 import fnmatch, os, subprocess, sys
 
-# plain HTTP: on km-pc's line Xet fetched ~1.3 MB/s against ~6.4 MB/s, and it writes the file
+# plain HTTP: on the GPU host's line Xet fetched ~1.3 MB/s against ~6.4 MB/s, and it writes the file
 # only at the end, so the progress bar (the directory's size) would stand still
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 from huggingface_hub import HfApi, snapshot_download  # noqa: E402

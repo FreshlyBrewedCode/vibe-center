@@ -66,7 +66,7 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   workerUrl: "",
   workerTokenSet: false,
   appUrl: "",
-  // the km-pc GPU servers through `speech.sh up`'s tunnels; CPU fallback when they're down
+  // the GPU servers on the GPU host through `speech.sh up`'s tunnels; CPU fallback when they're down
   sttUrl: "http://127.0.0.1:8401",
   ttsUrl: "http://127.0.0.1:8402",
   filler: true,
@@ -119,7 +119,7 @@ export interface VoiceStatus {
   };
   stt: ServiceHealth & { url: string };
   tts: ServiceHealth & { url: string };
-  /** `services/speech-gpu/speech.sh` on this machine (km-pc GPU servers), if it can run here. */
+  /** `services/speech-gpu/speech.sh` on this machine (GPU servers on the GPU host), if it can run here. */
   gpuSpeech: {
     available: boolean;
     running: GpuSpeechAction | null;

@@ -1,6 +1,6 @@
-# Speech model benchmarks on km-pc (RTX 3070, 8 GB)
+# Speech model benchmarks on the GPU host (RTX 3070, 8 GB)
 
-Measured 2026-10-29 on km-pc: RTX 3070, driver 595 / CUDA 13.2, onnxruntime-gpu 1.31.1,
+Measured 2026-10-29 on the GPU host: RTX 3070, driver 595 / CUDA 13.2, onnxruntime-gpu 1.31.1,
 torch 2.15.0+cu132, ctranslate2 4.8.4 (CUDA 12 wheels), onnx-asr 0.12.0, kokoro 0.9.4.
 Nobody was using the GPU, and the desktop held ~0.2 GB.
 
@@ -99,13 +99,13 @@ Medium: three sentences, 34 words.
 | TTS server (Kokoro, 28 voices) | 1.02 GB |
 | **both** | **2.75 GB** (GPU total 3.0 GB with the desktop; ~5 GB left) |
 
-Startup from a running km-pc: ~18 s until both `/health` answer (Kokoro ~9 s, Parakeet ~3.5 s,
-plus the nix shell and warm-up). From a sleeping km-pc: ~40 s.
+Startup from a running GPU host: ~18 s until both `/health` answer (Kokoro ~9 s, Parakeet ~3.5 s,
+plus the nix shell and warm-up). From a sleeping GPU host: ~40 s.
 
 ## STT accuracy and the model catalog (2026-10-30)
 
 After real calls showed accuracy problems, I measured where they came from before comparing
-models. Same km-pc (RTX 3070, driver 595 / CUDA 13.2, onnxruntime-gpu 1.31.1, faster-whisper
+models. Same GPU host (RTX 3070, driver 595 / CUDA 13.2, onnxruntime-gpu 1.31.1, faster-whisper
 1.2 / ctranslate2 4.8 on CUDA 12, onnx-asr 0.12.0); nobody at the PC.
 
 **Evaluation set** (`services/voice/eval`): 36 things people say to a coding agent ("Open a PR

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# On km-pc: start/stop the speech servers as detached processes that outlive the SSH
+# On the GPU host: start/stop the speech servers as detached processes that outlive the SSH
 # session (the `gpu` user has no lingering systemd user manager, so no `systemd-run --user`;
 # logind keeps processes of ended sessions since KillUserProcesses=false).
 #   ./run.sh start | stop | status | logs [stt|tts]

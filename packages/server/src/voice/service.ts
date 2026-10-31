@@ -46,7 +46,7 @@ export interface VoiceOptions {
   healthIntervalMs?: number;
   /** First restart delay after a crash. Default 1 s. */
   restartDelayMs?: number;
-  /** `speech.sh` for the km-pc GPU servers; null hides "Start GPU speech". */
+  /** `speech.sh` for the GPU servers on the GPU host; null hides "Start GPU speech". */
   gpuSpeechScript?: string | null;
   /** A call whose media never connects is ended after this long. Default 30 s. */
   connectTimeoutMs?: number;
@@ -148,7 +148,7 @@ export class VoiceService {
     for (const id of [...this.calls.keys()]) await this.hangUp(id, "server stopping");
     await this.managed?.stop();
     this.managed = null;
-    // a `speech.sh up` can poll km-pc for minutes; it doesn't outlive the app
+    // a `speech.sh up` can poll the GPU host for minutes; it doesn't outlive the app
     const job = this.gpuJob;
     if (job?.pid) {
       await stopGroup(job.pid, 2000);
@@ -589,12 +589,12 @@ export class VoiceService {
     },
   };
 
-  // ---- GPU speech (km-pc) ---------------------------------------------------------------------
+  // ---- GPU speech (GPU host) ---------------------------------------------------------------------
 
   private gpuScript(): string | null {
     const script = this.opts.gpuSpeechScript === undefined ? GPU_SPEECH_SCRIPT : this.opts.gpuSpeechScript;
     if (!script || !existsSync(script)) return null;
-    // speech.sh drives km-pc through the `gpu` helper; only offer it where that exists
+    // speech.sh drives the GPU host through the `gpu` helper; only offer it where that exists
     return this.opts.gpuSpeechScript !== undefined || Bun.which("gpu") ? script : null;
   }
 

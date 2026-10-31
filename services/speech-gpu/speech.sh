@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Run the speech servers on km-pc's GPU and reach them from here (dev):
-#   speech.sh up [--force]   wake km-pc, sync code, set up venv+models, start servers, open tunnels
+# Run the speech servers on the GPU host and reach them from here (dev):
+#   speech.sh up [--force]   wake the GPU host, sync code, set up venv+models, start servers, open tunnels
 #   speech.sh status         servers, tunnels, GPU memory
-#   speech.sh down           stop the servers, close the tunnels (km-pc stays awake: `gpu sleep`)
+#   speech.sh down           stop the servers, close the tunnels (the GPU host stays awake: `gpu sleep`)
 #   speech.sh restart        down + up (after changing server code)
 #   speech.sh logs [stt|tts] [lines]
 # STT: http://127.0.0.1:8401  POST /v1/audio/transcriptions   (the active model; /v1/stt/models)
 # TTS: http://127.0.0.1:8402  POST /v1/audio/speech → s16le 24 kHz (Kokoro-82M)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-HOST="${GPU_HOST:-km-pc}"
+# the GPU host's SSH name: $GPU_HOST, else GPU_HOST=… in local.env next to this script (gitignored)
+# shellcheck source=/dev/null
+[ -z "${GPU_HOST:-}" ] && [ -f "$HERE/local.env" ] && . "$HERE/local.env"
+HOST="${GPU_HOST:-gpu-host}"
 REMOTE_DIR=vibe-center/gpu-speech           # relative to the gpu user's home
 PORTS=(8401 8402)
 CTL="${XDG_RUNTIME_DIR:-/tmp}/gpu-speech-tunnel.sock"
@@ -42,11 +45,11 @@ up() {
   if ! grep -q 'up (NixOS)' <<<"$st"; then gpu wake; st=$(gpu status || true); fi
   who=$(sed -n 's/^local user: //p' <<<"$st")
   if [ -n "$who" ] && [ "$who" != none ] && [ "${1:-}" != --force ]; then
-    echo "$who is using km-pc locally; not loading models onto their GPU (~3 GB VRAM)." >&2
+    echo "$who is using the GPU host locally; not loading models onto their GPU (~3 GB VRAM)." >&2
     echo "Ask them, then rerun with --force." >&2
     exit 1
   fi
-  echo "syncing code to km-pc:~/$REMOTE_DIR"
+  echo "syncing code to $HOST:~/$REMOTE_DIR"
   (cd "$HERE" && tar c "${FILES[@]}") | remote "mkdir -p ~/$REMOTE_DIR && tar x -m -C ~/$REMOTE_DIR"
   # venv + models: only when requirements changed or the models are missing (first run: a few minutes)
   remote "cd ~/$REMOTE_DIR && h=\$(sha1sum requirements.txt env.sh | sha1sum | cut -c1-12) &&
@@ -78,7 +81,7 @@ up() {
 status() {
   local st
   st=$(gpu status || true)  # exits 1 when no browser tunnel is open
-  echo "$st" | grep -E '^(km-pc|gpu|local user):'
+  echo "$st" | grep -E '^($HOST|gpu|local user):'
   grep -q 'up (NixOS)' <<<"$st" && remote "cd ~/$REMOTE_DIR 2>/dev/null && ./run.sh status" || true
   if tunnel_open; then echo "tunnel: open"; else echo "tunnel: closed"; fi
   for p in "${PORTS[@]}"; do
@@ -90,10 +93,10 @@ down() {
   if (gpu status || true) | grep -q 'up (NixOS)'; then
     remote "cd ~/$REMOTE_DIR 2>/dev/null && ./run.sh stop" || true
   else
-    echo "km-pc is not up; nothing running there"
+    echo "the GPU host is not up; nothing running there"
   fi
   close_tunnel
-  echo "tunnels closed. km-pc is still awake: 'gpu sleep' when nothing else needs it"
+  echo "tunnels closed. The GPU host is still awake: 'gpu sleep' when nothing else needs it"
 }
 
 case "${1:-}" in

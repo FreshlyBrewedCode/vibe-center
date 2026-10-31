@@ -3,7 +3,7 @@
 Each entry says where its files come from, which runtime runs it (`cu13`: the server's own .venv,
 onnxruntime CUDA 13; `cu12`: .venv-whisper, ctranslate2 needs CUDA 12 and is installed with the
 first model that needs it), and what to show in a model picker. `latency_ms`, `vram_mb` and
-`wer` were measured on km-pc's RTX 3070 (BENCHMARKS.md, "STT model catalog"); `wer` is the
+`wer` were measured on the GPU host's RTX 3070 (BENCHMARKS.md, "STT model catalog"); `wer` is the
 evaluation set of services/voice/eval through the call pipeline, all conditions.
 """
 from dataclasses import dataclass, field

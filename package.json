@@ -1,6 +1,7 @@
 {
   "name": "vibe-center",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*",

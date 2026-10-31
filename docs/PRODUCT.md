@@ -78,7 +78,7 @@ remote.
 - **Voice pipeline as separate managed processes**: the Python Pipecat voice worker
   (`services/voice`, grown from `prototype/voice-loop`) does transport, VAD, turn-taking,
   STT/TTS and latency hiding. It does *not* own the agent: its "LLM step" calls back into the main app, which routes it into the
-  agent's ACP session and persists the transcript. STT/TTS default to the GPU servers on km-pc
+  agent's ACP session and persists the transcript. STT/TTS default to the GPU servers on the GPU host
   (`services/speech-gpu`, via `.agents/skills/gpu-ml`). Settings can point the worker and the
   STT/TTS services at URLs, so any of them can run on another machine. While in a call, prompts
   carry a voice-mode note (short spoken replies, no markdown). **No end-of-turn "mm-hmm"**:

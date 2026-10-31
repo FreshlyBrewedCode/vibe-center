@@ -24,7 +24,7 @@ vibe-center start  (one Bun process, binds 127.0.0.1:7880 only)
   ├─ one process/connection per configured upstream MCP server (stdio child or HTTP client)
   ├─ voice bridge       /voice/bridge  WS from the worker, per-call Bearer token
   └─ voice worker       services/voice (Python, Pipecat), managed child process or remote URL
-       ⇅ WebRTC media straight to the browser;  STT/TTS: services/speech-gpu on km-pc or CPU
+       ⇅ WebRTC media straight to the browser;  STT/TTS: services/speech-gpu on the GPU host or CPU
 ```
 
 ## Layout
@@ -54,7 +54,7 @@ packages/server/src/
 packages/server/test/     bun tests; fake-agent.ts is a scripted ACP agent, fake-voice-worker.ts
                           the worker's API and bridge without audio
 services/voice/           the voice worker (Python + uv): README has its API and bridge protocol
-services/speech-gpu/      GPU STT (Parakeet) / TTS (Kokoro) servers for km-pc, speech.sh
+services/speech-gpu/      GPU STT (Parakeet) / TTS (Kokoro) servers for the GPU host, speech.sh
 packages/web/src/         Vite SPA (below)
 e2e/                      Playwright
 ```
@@ -555,7 +555,7 @@ browser (DM) ── POST /api/voice/calls {agentId, sdp} ──▶ app ── PO
   (`AgentMessenger.deliver` via `BuiltinDeps.speakEvent`), so another agent's answer arriving
   during a call is spoken; the hop limit still sees the turn.
 - **Settings** (`settings` row `voice`, `voice/settings.ts`): worker mode/URL/token (the token is
-  write-only), app URL for a remote worker, STT/TTS URLs (default the km-pc tunnels
+  write-only), app URL for a remote worker, STT/TTS URLs (default the GPU host tunnels
   `127.0.0.1:8401/8402`; empty = CPU only), filler, the STT language (`""` = detect), the custom
   vocabulary and `recordTurns` (debug recordings, 0 = off). Per call the app sends the vocabulary
   plus every agent's name, the language and `record_turns` to the worker. Per call, the worker uses
@@ -655,7 +655,7 @@ Settings. Gateway-served tool calls carry `data.gateway` on their tool_call mess
 - Harness processes stay up while the server runs (no idle reaping yet). Each active agent
   holds one process. Reaping a crashed run's leftovers needs `/proc` (Linux).
 - Stopping the server stops a running `speech.sh` job, but GPU servers it already started on
-  km-pc keep running (they're shared; `speech.sh down` or Settings → Voice stops them).
+  the GPU host keep running (they're shared; `speech.sh down` or Settings → Voice stops them).
 - Steering (sending into a running turn; claude-agent-acp advertises it) isn't used. Prompts
   queue.
 - MCP (phase 2a): upstream servers are shared by all agents (one process/connection per server),

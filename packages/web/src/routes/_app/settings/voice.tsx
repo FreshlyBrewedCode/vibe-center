@@ -122,7 +122,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
                 label="Worker URL"
-                hint="e.g. http://km-pc.tailnet:7860 (run services/voice/run.sh there)"
+                hint="e.g. http://gpu-host.tailnet:7860 (run services/voice/run.sh there)"
               >
                 <Input
                   aria-label="Worker URL"
@@ -164,7 +164,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
       <Section title="Speech">
         <Card className="space-y-3 p-4">
           <p className="text-muted-foreground text-xs">
-            OpenAI-compatible servers. Defaults are the GPU servers on km-pc through the tunnels that{" "}
+            OpenAI-compatible servers. Defaults are the GPU servers on the GPU host through the tunnels that{" "}
             <code>speech.sh up</code> opens. Leave a field empty, or let the server be offline, and the worker
             uses its CPU models (Whisper base.en, Kokoro) instead, per call.
           </p>
@@ -205,7 +205,7 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
             <div className="space-y-2 border-line border-t pt-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Cpu className="size-4 text-muted-foreground" />
-                <span className="font-medium text-sm">GPU speech on km-pc</span>
+                <span className="font-medium text-sm">GPU speech on the GPU host</span>
                 {s.gpuSpeech.running && (
                   <span className="flex items-center gap-1 text-muted-foreground text-xs">
                     <Loader2 className="size-3 animate-spin" /> speech.sh {s.gpuSpeech.running}…
@@ -238,9 +238,10 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
                 </Button>
               </div>
               <p className="text-muted-foreground text-xs">
-                Wakes km-pc, starts the STT server (with the model chosen below) and Kokoro TTS there and
-                opens the tunnels (services/speech-gpu/speech.sh). It refuses while someone is using km-pc.
-                Stopping leaves km-pc awake: run <code>gpu sleep</code> when nothing else needs it.
+                Wakes the GPU host, starts the STT server (with the model chosen below) and Kokoro TTS there
+                and opens the tunnels (services/speech-gpu/speech.sh). It refuses while someone is using the
+                GPU host. Stopping leaves the GPU host awake: run <code>gpu sleep</code> when nothing else
+                needs it.
               </p>
               {s.gpuSpeech.lastOutput && (
                 <pre className="vc-scroll max-h-48 overflow-auto rounded-[8px] bg-background px-3 py-2 font-mono text-[11px] leading-snug">
@@ -259,8 +260,8 @@ function VoiceForm({ settings }: { settings: VoiceSettings }) {
       <Section title="Speech-to-text model">
         <p className="text-muted-foreground text-xs">
           The model the STT server uses for calls. Only the models you download take disk space; switching
-          takes a few seconds and needs no restart. Speed and accuracy were measured on km-pc's RTX 3070 with
-          this project's evaluation set.
+          takes a few seconds and needs no restart. Speed and accuracy were measured on the GPU host's RTX
+          3070 with this project's evaluation set.
         </p>
         <SttModels />
         <Card className="space-y-4 p-4">

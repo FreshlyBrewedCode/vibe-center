@@ -2,7 +2,7 @@
 
 Date 2026-10-29. Pipecat 1.15.0, `agent-client-protocol` 0.12.1 (Python), claude-agent-acp
 0.99.0 → Claude Code, Haiku (`haiku` alias), one long-lived ACP session per call. dev: 6 CPU
-cores, no GPU. GPU speech: `prototype/gpu-speech` on km-pc's RTX 3070 (Parakeet-TDT 0.6B v2
+cores, no GPU. GPU speech: `prototype/gpu-speech` on the GPU host's RTX 3070 (Parakeet-TDT 0.6B v2
 STT, Kokoro-82M TTS) through SSH tunnels. All numbers come from the automated e2e test
 (`tests/e2e.py`). It drives the real WebRTC path in headless Chromium on dev, with a fake mic
 playing a scripted call (`tests/scenario.py`: 8 utterances, two barge-ins, one proactive event).
@@ -24,11 +24,11 @@ All of it, end to end over WebRTC. Every e2e run below PASSes.
 | Warm-up turn, pre-spawned warmed session (call starts with no ACP cold start) | ✅ spawn ~0.8 s + warm-up ~1.5 s happen before the call |
 | Latency log (JSONL per turn) + `analyze` (median/p90 + per-turn table) | ✅ |
 | Proactive event `POST /event` → spoken only when user and bot are idle | ✅ e.g. "The frontend agent says the login bug is fixed and all tests pass." |
-| HTTP STT/TTS → CPU fallback per request if km-pc is unreachable | ✅ full e2e PASS with km-pc asleep |
+| HTTP STT/TTS → CPU fallback per request if the GPU host is unreachable | ✅ full e2e PASS with the GPU host asleep |
 
 ## The key number: user stops speaking → first real agent audio
 
-| | CPU fallback on dev | GPU on km-pc |
+| | CPU fallback on dev | GPU on the GPU host |
 |---|---|---|
 | server: first agent audio frame out, median (p90) | **2643 ms (3855)** n=20 | **2219 ms (3134)** n=21 |
 | browser: mouth → agent audio heard, median (p90) | **2894 ms (4111)** n=20 | **2587 ms (3254)** n=14 |
@@ -91,7 +91,7 @@ CPU fallback (faster-whisper base.en int8 + kokoro-onnx on dev; 3 runs: `e2e-loc
 | **browser: MOUTH→AGENT HEARD** | 20 | **2894** | **4111** | 2164 | 4708 |
 | browser: frame out→heard | 20 | 101 | 135 | 64 | 152 |
 
-GPU (Parakeet + Kokoro-82M on km-pc via tunnels; 2 runs after the TTS trim fix:
+GPU (Parakeet + Kokoro-82M on the GPU host via tunnels; 2 runs after the TTS trim fix:
 `e2e-http-20261029-200759`, `e2e-http-20261029-201020`):
 
 | stage (ms after user stopped speaking) | n | median | p90 | min | max |
@@ -140,7 +140,7 @@ Per-turn, best GPU run (`e2e-http-20261029-201020`; ms after the user stopped; "
 being spoken. The scenario's fixed gaps are shorter than some replies, so these are real barge-ins.)
 
 Other runs kept for reference: `e2e-http-20261029-200447` (GPU before the trim fix),
-`e2e-http-fallback-kmpc-asleep-20261029-201753` (`SPEECH_BACKEND=http` with km-pc asleep: every
+`e2e-http-fallback-kmpc-asleep-20261029-201753` (`SPEECH_BACKEND=http` with the GPU host asleep: every
 request fell back to CPU, PASS), `e2e-local-timeout1.3s-20261029-202015` (timeout path).
 Each dir has `server.log`, `call-*.jsonl` and `browser.json`. Re-analyze with
 `uv run python -m voice_loop.analyze --run tests/out/<dir> [--run ...]`.

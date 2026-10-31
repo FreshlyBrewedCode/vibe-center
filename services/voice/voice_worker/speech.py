@@ -1,8 +1,8 @@
-"""STT/TTS: OpenAI-compatible HTTP servers (the GPU servers on km-pc, via tunnels) or local CPU.
+"""STT/TTS: OpenAI-compatible HTTP servers (the GPU servers on the GPU host, via tunnels) or local CPU.
 
 Each call picks HTTP for STT and TTS separately when the URL is set and its /health answers;
 otherwise the local CPU models (faster-whisper, kokoro-onnx). An HTTP request that can't
-connect falls back to the CPU model, so a sleeping km-pc never loses a turn.
+connect falls back to the CPU model, so a sleeping GPU host never loses a turn.
 Each service marks stt_*/tts_* timestamps on the call's TurnLog.
 """
 

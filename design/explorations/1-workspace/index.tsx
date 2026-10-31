@@ -451,7 +451,7 @@ function Details({ agent }: { agent: Agent }) {
         </Section>
         <Section title="Voice">
           <KV k="Voice" v="Michael" />
-          <KV k="Speech" v="GPU · km-pc" />
+          <KV k="Speech" v="GPU · gpu-host" />
         </Section>
       </div>
     </aside>

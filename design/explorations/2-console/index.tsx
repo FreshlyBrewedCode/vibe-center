@@ -104,7 +104,7 @@ function TopBar() {
       <span className="flex items-center gap-1.5">
         <span className="size-1.5 rounded-full bg-ok" /> live · km-dev
       </span>
-      <span>speech gpu/gpu · km-pc</span>
+      <span>speech gpu/gpu · gpu-host</span>
       <span className="flex-1" />
       <span className="flex items-center gap-1.5 rounded border border-line px-2 py-0.5">
         <Search className="size-3" /> search <kbd className="text-muted-fg/70">⌘K</kbd>

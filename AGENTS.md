@@ -30,7 +30,7 @@ bun run check:voice    # voice worker: ruff + pytest (services/voice/run.sh chec
   ~1 min, CPU speech unless `speech.sh up` ran; `VC_E2E_VOICE=0` skips it,
   `VC_E2E_VOICE_AGENT=claude` uses Claude Haiku instead of the fake agent). Parallel worktrees:
   pick another port with `VC_E2E_PORT`.
-- GPU speech on km-pc: `services/speech-gpu/speech.sh up|status|down` (or Settings → Voice).
+- GPU speech on the GPU host: `services/speech-gpu/speech.sh up|status|down` (or Settings → Voice).
   Follow `.agents/skills/gpu-ml`: check `gpu status` for a local user, `speech.sh down`, then
   `gpu sleep` when done.
 - Leave nothing running: stop servers with Ctrl+C or SIGTERM, which also stops harness
@@ -43,7 +43,7 @@ bun run check:voice    # voice worker: ruff + pytest (services/voice/run.sh chec
 `packages/shared` (types, zod schemas, events), `packages/server` (CLI, Hono API, WS, domain,
 ACP layer, SQLite), `packages/web` (Vite + React + TanStack Router/Query + shadcn/ui),
 `e2e/` (Playwright), `services/voice` (the voice worker: Python 3.12, uv, ruff, pytest) and
-`services/speech-gpu` (GPU STT/TTS servers for km-pc). `spikes/` and `prototype/` are reference
+`services/speech-gpu` (GPU STT/TTS servers for the GPU host). `spikes/` and `prototype/` are reference
 material from before v1; don't build on their code paths, port what you need.
 
 ## Conventions

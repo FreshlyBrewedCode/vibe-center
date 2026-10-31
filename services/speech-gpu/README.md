@@ -1,8 +1,8 @@
-# speech-gpu: local STT + TTS on km-pc
+# speech-gpu: local STT + TTS on the GPU host
 
 Speech-to-text and text-to-speech servers for Vibe Center's voice calls (the default STT/TTS
 URLs of the voice worker, `services/voice`). They run on
-km-pc's RTX 3070, and `dev` reaches them through SSH local forwards on the same ports.
+the GPU host's RTX 3070, and `dev` reaches them through SSH local forwards on the same ports.
 
 | | port | endpoint | model |
 |---|---|---|---|
@@ -25,14 +25,17 @@ picks it in Settings → Voice or through the API):
 
 ## Use it from dev
 
+`speech.sh` reaches the GPU host as `gpu@$GPU_HOST` through the `gpu` helper. Set `GPU_HOST`, or put
+`GPU_HOST=<ssh name>` in `services/speech-gpu/local.env` (gitignored).
+
 ```sh
-services/speech-gpu/speech.sh up        # wake km-pc, sync, start, open tunnels (~20 s awake, ~40 s from sleep; first run on a fresh km-pc: minutes)
+services/speech-gpu/speech.sh up        # wake the GPU host, sync, start, open tunnels (~20 s awake, ~40 s from sleep; first run on a fresh GPU host: minutes)
 services/speech-gpu/smoke.py            # TTS -> STT round trip through the tunnels; prints timings, PASS/FAIL
 services/speech-gpu/speech.sh status    # servers (pid, VRAM), tunnel, /health of both ports
 services/speech-gpu/speech.sh logs tts  # tail a server's log (stt|tts) [lines]
 services/speech-gpu/speech.sh restart   # after changing server code
 services/speech-gpu/speech.sh down      # stop servers, close tunnels
-gpu sleep                                # when nothing else needs km-pc
+gpu sleep                                # when nothing else needs the GPU host
 ```
 
 The app can run `up`, `status` and `down` too: Settings → Voice → "Start GPU speech" (it shows
@@ -41,12 +44,12 @@ answers at call start, else the worker's CPU models.
 
 - `up` is idempotent: servers that already run are left alone, and an open tunnel is reused. It
   reinstalls the venv only when `requirements.txt` or `env.sh` changed
-- `up` refuses when someone sits at km-pc (`gpu status` → `local user`), since the models take
+- `up` refuses when someone sits at the GPU host (`gpu status` → `local user`), since the models take
   ~2.7 GB of their GPU (more with Canary). Ask them first, then `speech.sh up --force`
-- the servers don't take the produce-together GPU lock (`/tmp/pt-gpu.lock`): they hold VRAM but
+- the servers don't take the shared GPU lock (`/tmp/pt-gpu.lock`): they hold VRAM but
   are idle between requests. Run `speech.sh down` before long GPU benchmarks
 - the tunnel is a ControlMaster socket at `$XDG_RUNTIME_DIR/gpu-speech-tunnel.sock`, separate
-  from `gpu`'s tunnels: `gpu close` leaves it alone. `gpu sleep` suspends km-pc under running
+  from `gpu`'s tunnels: `gpu close` leaves it alone. `gpu sleep` suspends the GPU host under running
   servers, so `speech.sh down` first
 
 ## Interface
@@ -103,7 +106,7 @@ voices, `a*` American and `b*` British (`af_` = female, `am_` = male).
 Both: `GET /health` → 200 `{"status": "ok", ...}` once the model is loaded and warmed up. Until
 then the port refuses connections. STT also has `GET /v1/models`.
 
-## How it runs on km-pc
+## How it runs on the GPU host
 
 - code in `~/vibe-center/gpu-speech` (synced by `up`; the remote name predates the move to
   `services/speech-gpu` and is kept so the venv and models there are reused), venv `.venv` there, STT models in
@@ -157,14 +160,14 @@ then the port refuses connections. STT also has `GET /v1/models`.
 
 ## Benchmarks
 
-`bench/` has the scripts behind BENCHMARKS.md. Run them on km-pc from `~/vibe-center/gpu-speech/bench`
+`bench/` has the scripts behind BENCHMARKS.md. Run them on the GPU host from `~/vibe-center/gpu-speech/bench`
 with `../env.sh python <script>`, after copying `bench/` (and, for Whisper, `requirements-whisper.txt`) over. `tts_kokoro.py` writes the test clips
 to `/tmp/gpu-speech-bench/`, which `stt.py <parakeet|parakeet-fp16|parakeet-int8|whisper-turbo|whisper-distil>` reads.
 `paced.py` runs on dev against the live servers.
 
 The accuracy numbers come from the voice worker's evaluation set (`services/voice/eval`): on dev,
 `./run.sh python -m eval.run --stt http://127.0.0.1:8401 [--vocab]` measures the active model
-as served, through the call pipeline's segmentation. For in-process variants on km-pc
+as served, through the call pipeline's segmentation. For in-process variants on the GPU host
 (precision, padding), `./run.sh python -m eval.export` on dev, copy `eval/out/export` and
 `eval/wer.py` to `/tmp/stt-eval` there, then `./env.sh python bench/stt_eval.py <model-id>
 <model-dir> [--fp32]` from `~/vibe-center/gpu-speech`.

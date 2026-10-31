@@ -143,7 +143,7 @@ All six were real, reproduced first, then fixed. Commits are on this branch, in 
   "bonus" in the brief) — it would need the worker to report sentence-level TTS playback progress
   back over the bridge, which is a larger change than the marker. Worth a follow-up if the marker
   alone feels insufficient in practice.
-- **GPU voice** (km-pc) wasn't touched, per the brief ("don't wake km-pc; GPU testing happens with
+- **GPU voice** (GPU host) wasn't touched, per the brief ("don't wake the GPU host; GPU testing happens with
   the user").
 
 ## Test status

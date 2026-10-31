@@ -2,7 +2,7 @@
 before the agent said anything.
 
 Synthesized once per voice with the local kokoro-onnx (same voices as the GPU server, no network
-round trip, works with km-pc asleep) and cached as raw PCM (s16le mono 24 kHz) in <data>/cues/.
+round trip, works with the GPU host asleep) and cached as raw PCM (s16le mono 24 kHz) in <data>/cues/.
 There is deliberately no end-of-turn acknowledgement: the end of the user's turn is silent.
 """
 

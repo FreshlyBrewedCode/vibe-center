@@ -8,8 +8,8 @@ WebSocket, and the app prompts the agent's own ACP session (`ChatService.prompt`
 
 ```
 browser ──WebRTC media (UDP, direct)──▶ worker (this dir, Python)        STT/TTS servers
-   │                                      ├─ VAD + Smart Turn v3 (CPU)    (services/speech-gpu on
-   │ offer/ICE/hang-up (HTTPS, cookie)    ├─ STT → BridgeTalker → TTS ───▶ km-pc, or CPU here)
+   │                                      ├─ VAD + Smart Turn v3 (CPU)    (services/speech-gpu on a
+   │ offer/ICE/hang-up (HTTPS, cookie)    ├─ STT → BridgeTalker → TTS ───▶ GPU host, or CPU here)
    ▼                                      │
 vibe-center app ──POST /calls (Bearer)───▶│
    ▲  /voice/bridge (WS, per-call token)  │

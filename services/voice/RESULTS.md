@@ -4,7 +4,7 @@ Date 2026-10-29. The voice worker (`services/voice`, Pipecat 1.15) managed by th
 through the real app (signalling via `/api/voice`, the bridge into `ChatService.prompt`), driven by
 `e2e/voice-call.spec.ts`: headless Chromium on dev with a fake microphone playing
 `tests/scenario.py` (5 utterances, a silent tool call, a barge-in, one proactive event). GPU
-speech = `services/speech-gpu` on km-pc's RTX 3070 (Parakeet STT, Kokoro TTS with the new
+speech = `services/speech-gpu` on the GPU host's RTX 3070 (Parakeet STT, Kokoro TTS with the new
 server-side silence trim) through the SSH tunnels; CPU = faster-whisper base.en + kokoro-onnx on
 dev. Every run below PASSes. One call per configuration (5 user turns): indicative, not
 statistics. Raw reports in [results/](results/).

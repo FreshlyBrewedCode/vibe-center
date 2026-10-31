@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run a command on km-pc with Python + CUDA libraries reachable (NixOS has no
+# Run a command on the GPU host with Python + CUDA libraries reachable (NixOS has no
 # global dynamic loader). Usage (from any directory):
 #   ./env.sh setup             create/refresh .venv from requirements.txt
 #   ./env.sh python foo.py     anything else runs inside the environment

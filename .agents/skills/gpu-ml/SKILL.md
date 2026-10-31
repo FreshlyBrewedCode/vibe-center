@@ -1,13 +1,13 @@
 ---
 name: gpu-ml
-description: "Run Python ML workloads (PyTorch, onnxruntime, CUDA; speech models for STT, TTS, VAD, turn detection) on km-pc's RTX 3070 over `gpu ssh`. Use for any benchmark, prototype or voice-pipeline test that needs CUDA or real GPU latency numbers."
+description: "Run Python ML workloads (PyTorch, onnxruntime, CUDA; speech models for STT, TTS, VAD, turn detection) on the GPU host's RTX 3070 over `gpu ssh`. Use for any benchmark, prototype or voice-pipeline test that needs CUDA or real GPU latency numbers."
 ---
 
 This project's companion to the `gpu` skill, which owns waking, `gpu status`, `gpu ssh` and
 `gpu sleep`. Its browser, Blender, dev-server-port and `scripts/gpu-job.sh` sections belong to the
-produce-together game; here km-pc is a headless CUDA box you drive over `gpu ssh`.
+game project it was written for; here the GPU host is a headless CUDA box you drive over `gpu ssh`.
 
-## What km-pc offers
+## What the GPU host offers
 
 - RTX 3070, 8 GB VRAM (~0.6 GB already held by its desktop and the shared browser), driver 595,
   CUDA 13.2; 12 cores, 15 GB RAM, ~160 GB free disk. Shared, unprivileged `gpu` user
@@ -80,21 +80,21 @@ start the server detached in its own session and keep a pid file:
 `speech.sh up|status|down`, with its own ControlMaster tunnel. Its STT/TTS servers (ports
 8401/8402, ~2.8 GB VRAM) are the ready-made speech stack: see its README.
 
-## Reaching a server on km-pc
+## Reaching a server on the GPU host
 
-km-pc accepts SSH only. Reach a service it runs (a voice-pipeline server, a model server) through
-a local forward from `dev`: `ssh -f -N -L 127.0.0.1:<port>:127.0.0.1:<port> gpu@km-pc`. A
+The GPU host accepts SSH only. Reach a service it runs (a voice-pipeline server, a model server) through
+a local forward from `dev`: `ssh -f -N -L 127.0.0.1:<port>:127.0.0.1:<port> gpu@<gpu-host>`. A
 forward carries TCP only, so pick WebSocket/HTTP transports for anything that goes through it;
-whether UDP (WebRTC media) reaches km-pc over the tailnet is unverified, so check it before
+whether UDP (WebRTC media) reaches the GPU host over the tailnet is unverified, so check it before
 relying on it.
 
 ## Sharing the GPU
 
 - `gpu status` first: when `local user` names someone, they are at the PC (maybe gaming). Ask
   the user before loading models onto the GPU
-- take the same lock as produce-together's GPU jobs so the two projects take turns:
+- take the shared GPU lock other projects use, so they take turns:
   `flock /tmp/pt-gpu.lock <command>` on `dev` (a kernel lock, released when its holder dies)
 - as a subagent, stay with a long job until it ends, checking its log, since ending your turn
   leaves the GPU loaded with nobody watching. Print a line per step so progress is visible
-- when done: stop your processes on km-pc, `rm -rf` scratch data you don't need again, then
-  `gpu sleep` (it leaves km-pc on if someone is using it)
+- when done: stop your processes on the GPU host, `rm -rf` scratch data you don't need again, then
+  `gpu sleep` (it leaves the GPU host on if someone is using it)
