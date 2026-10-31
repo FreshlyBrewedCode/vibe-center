@@ -30,7 +30,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `bun packages/server/src/cli.ts start --local --no-probe --port ${port} --data-dir ${process.env.VC_E2E_DATA_DIR}`,
+    // VC_E2E_VOICE=0 skips the call spec, so the server needn't start (and set up) the voice worker
+    command: `bun packages/server/src/cli.ts start --local --no-probe --port ${port} --data-dir ${process.env.VC_E2E_DATA_DIR}${process.env.VC_E2E_VOICE === "0" ? " --no-voice" : ""}`,
     url: `http://localhost:${port}/`,
     reuseExistingServer: false,
     stdout: "pipe",

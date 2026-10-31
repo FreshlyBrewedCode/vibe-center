@@ -1,0 +1,60 @@
+name: release
+
+# Two modes, sharing one job (modelled on Canvas):
+#   - push to main      -> a pre-release `X.Y.Z-next.N`: git tag + GitHub pre-release.
+#   - workflow_dispatch -> a stable release `X.Y.Z`. `--branches main` makes semantic-release
+#                          treat main as a plain release branch; stable runs ignore pre-release
+#                          tags, so it computes the final `X.Y.Z` from the last stable tag.
+#
+# .releaserc.json keeps a non-pre-release branch (`stable`, never pushed to or released from)
+# because semantic-release rejects a config whose only branch is a pre-release branch.
+#
+# Versions come from the squash-merged PR titles (Conventional Commits, see pr-title.yml):
+# feat → minor, fix/perf → patch, a breaking change → minor while on 0.x. Other types
+# (docs, ci, chore, …) release nothing.
+#
+# Only GitHub releases for now; the npm package (and its trusted publishing, which pins this
+# filename) comes later. See docs/RELEASING.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# Rapid merges to main cancel the older pre-release run; a manual stable release is its own group
+# so a later merge can't cancel it mid-release.
+concurrency:
+  group: release-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Release a pre-release
+        if: github.event_name == 'push'
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release a stable version
+        if: github.event_name == 'workflow_dispatch'
+        run: npx semantic-release --branches main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
